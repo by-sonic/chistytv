@@ -1,15 +1,90 @@
 {
   "version": 1,
   "platforms": [
-    { "id": "xiaomi", "name": "Xiaomi PatchWall", "detect_packages": ["com.test.patchwall"], "detect_manufacturer": "^Xiaomi$" },
-    { "id": "yandex", "name": "Яндекс ТВ", "detect_packages": ["com.test.yandex.launcher"] }
+    {
+      "id": "xiaomi",
+      "name": "Xiaomi PatchWall",
+      "detect_packages": [
+        "com.test.patchwall"
+      ],
+      "detect_manufacturer": "^Xiaomi$"
+    },
+    {
+      "id": "yandex",
+      "name": "Яндекс ТВ",
+      "detect_packages": [
+        "com.test.yandex.launcher"
+      ]
+    }
   ],
   "packages": [
-    { "id": "com.test.ads", "platform": "xiaomi", "group": "ads", "action": "disable", "title": "Реклама", "note": "рекламные ряды" },
-    { "id": "com.test.analytics", "platform": "xiaomi", "group": "telemetry", "action": "disable", "title": "Аналитика", "note": "сбор данных" },
-    { "id": "com.test.yandexads", "platform": "yandex", "group": "ads", "action": "disable", "title": "Чужая реклама", "note": "не должна трогаться на Xiaomi" },
-    { "id": "com.test.okko", "platform": "any", "group": "streaming", "action": "ask", "title": "Okko", "note": "онлайн-кинотеатр" },
-    { "id": "com.test.launcher", "platform": "xiaomi", "group": "system", "action": "keep", "title": "Лаунчер", "note": "без замены — чёрный экран" },
-    { "id": "com.android.settings", "platform": "any", "group": "ads", "action": "disable", "title": "Ошибка в базе", "note": "защита должна сработать" }
+    {
+      "id": "com.test.ads",
+      "platform": "xiaomi",
+      "group": "ads",
+      "action": "disable",
+      "title": "Реклама",
+      "note": "рекламные ряды"
+    },
+    {
+      "id": "com.test.analytics",
+      "platform": "xiaomi",
+      "group": "telemetry",
+      "action": "disable",
+      "title": "Аналитика",
+      "note": "сбор данных"
+    },
+    {
+      "id": "com.test.yandexads",
+      "platform": "yandex",
+      "group": "ads",
+      "action": "disable",
+      "title": "Чужая реклама",
+      "note": "не должна трогаться на Xiaomi"
+    },
+    {
+      "id": "com.test.okko",
+      "platform": "any",
+      "group": "streaming",
+      "action": "ask",
+      "title": "Okko",
+      "note": "онлайн-кинотеатр"
+    },
+    {
+      "id": "com.test.launcher",
+      "platform": "xiaomi",
+      "group": "system",
+      "action": "keep",
+      "title": "Лаунчер",
+      "note": "без замены — чёрный экран"
+    },
+    {
+      "id": "com.android.settings",
+      "platform": "any",
+      "group": "ads",
+      "action": "disable",
+      "title": "Ошибка в базе",
+      "note": "защита должна сработать"
+    },
+    {
+      "id": "com.test.stock",
+      "platform": "xiaomi",
+      "group": "system",
+      "action": "keep",
+      "launcher": true,
+      "requires": [
+        "com.test.wraith"
+      ],
+      "title": "Штатный лаунчер",
+      "note": ""
+    },
+    {
+      "id": "com.test.wraith",
+      "platform": "xiaomi",
+      "group": "system",
+      "action": "keep",
+      "title": "Мастер настройки",
+      "note": ""
+    }
   ]
 }

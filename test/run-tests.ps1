@@ -34,6 +34,11 @@ function Run([string[]]$ScriptArgs) {
   return $out
 }
 
+function RunWithInput([string]$InputText, [string[]]$ScriptArgs) {
+  $work = Join-Path $tmp 'work'
+  return ($InputText | & powershell -NoProfile -ExecutionPolicy Bypass -File $script -AdbPath $fakeAdb -DataPath $data -WorkDir $work -TvIp 10.0.0.5 @ScriptArgs *>&1 | Out-String)
+}
+
 function Check([string]$Name, [bool]$Condition, [string]$Details = '') {
   if ($Condition) { Write-Host "✔ $Name" -ForegroundColor Green }
   else { Write-Host "✖ $Name $Details" -ForegroundColor Red; $script:failed++ }
@@ -99,6 +104,18 @@ $tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.test.launcher')) @{ hom
 $out = Run @('-Action', 'launcher', '-Yes')
 $s = State $tv
 Check 'предложен мягкий способ, штатный лаунчер цел' (($out -match 'Home Button Fix') -and (@($s.disabled).Count -eq 0)) $out
+
+# 9. Жёсткий режим: парный пакет владеет Wi-Fi — отменяем всё, ничего не отключаем
+$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.test.stock', 'com.test.wraith')) @{ wifi_owner = 'cname=com.test.wraith' }
+$out = RunWithInput "n`ny`n" @('-Action', 'launcher')
+$s = State $tv
+Check 'Wi-Fi владелец — отмена без отключений' (($out -match 'потеряет Wi-Fi') -and (@($s.disabled).Count -eq 0)) $out
+
+# 10. Жёсткий режим: лаунчер отключается вместе с парным пакетом
+$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.test.stock', 'com.test.wraith'))
+$out = RunWithInput "n`ny`n" @('-Action', 'launcher')
+$s = State $tv
+Check 'лаунчер и парный пакет отключены вместе' ((@($s.disabled) -contains 'com.test.stock') -and (@($s.disabled) -contains 'com.test.wraith') -and ($out -match 'Готово')) $out
 
 Remove-Item $tmp -Recurse -Force
 if ($failed) { Write-Host "`nПровалено: $failed" -ForegroundColor Red; exit 1 }

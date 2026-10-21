@@ -49,6 +49,7 @@ switch ($argv[0]) {
     if ($cmd -eq 'dumpsys activity activities') {
       $top = 'com.google.android.apps.tv.launcherx/.StockActivity'
       if ($state.home_works -and $state.home) { $top = $state.home }
+      if ($state.home -and @($state.disabled) -contains 'com.test.stock') { $top = $state.home }
       "  topResumedActivity=ActivityRecord{1a2b u0 $top t12}"
       return
     }

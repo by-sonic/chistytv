@@ -583,24 +583,36 @@ function Invoke-Launcher {
     if (Test-HomeOpens $Script:LauncherPackage) { Ok 'Готово: «Домой» открывает LTvLauncher.'; return }
   }
 
-  $stock = @($Script:Db.packages | Where-Object { $_.launcher -and $Script:Info.Installed -contains $_.id -and $Script:Info.Disabled -notcontains $_.id })
+  $stock = @()
+  foreach ($e in @($Script:Db.packages | Where-Object { $_.launcher -and $Script:Info.Installed -contains $_.id -and $Script:Info.Disabled -notcontains $_.id })) {
+    $stock += $e
+    # Парные пакеты: на Google TV 14 без setupwraith система уходит в цикл перезагрузок.
+    foreach ($req in @($e.requires)) {
+      if (-not $req) { continue }
+      if ($Script:Info.Installed -contains $req -and $Script:Info.Disabled -notcontains $req) {
+        $reqEntry = $Script:Db.packages | Where-Object { $_.id -eq $req } | Select-Object -First 1
+        $title = $req
+        if ($reqEntry) { $title = $reqEntry.title }
+        $stock += [pscustomobject]@{ id = $req; title = $title }
+      }
+    }
+  }
   if (-not $stock.Count) { Warn 'Штатный лаунчер этой прошивки не знаю — оставляю как есть. Подробнее: PROMPT.md.'; return }
   Say ''
   Say '  Жёсткий способ — отключить штатный лаунчер. Обратимо через «Вернуть как было».' 'Yellow'
   foreach ($e in $stock) { Say "    • $($e.title) ($($e.id))" 'DarkGray' }
   if (-not (Confirm 'Отключить штатный лаунчер?' $false)) { return }
 
+  # Пакет-владелец сохранённой сети Wi-Fi при отключении удаляет её — ТВ отвалится от Wi-Fi и ADB.
+  # Лаунчер и его парные пакеты отключаются только все вместе, поэтому при любой помехе отменяем всё.
   $wifiOwners = Sh "dumpsys wifi | grep -o 'cname=[^ ]*'"
-  $toDisable = @()
-  foreach ($e in $stock) {
-    if ($wifiOwners -match [regex]::Escape($e.id)) {
-      Warn "$($e.id) владеет сохранённой сетью Wi-Fi: при отключении ТВ потеряет Wi-Fi. Пропускаю."
-      Say '    Чтобы снять это: Настройки → Сеть → забудьте сеть и подключитесь заново, потом запустите пункт снова.' 'DarkGray'
-      continue
-    }
-    $toDisable += $e
+  $owners = @($stock | Where-Object { $wifiOwners -match [regex]::Escape($_.id) })
+  if ($owners.Count) {
+    Warn "$(($owners | ForEach-Object { $_.id }) -join ', ') владеет сохранённой сетью Wi-Fi: после отключения ТВ потеряет Wi-Fi."
+    Say '    Настройки → Сеть → «Забыть сеть», подключитесь к ней заново и запустите этот пункт ещё раз.' 'DarkGray'
+    return
   }
-  if (-not $toDisable.Count) { return }
+  $toDisable = $stock
   Disable-Packages $toDisable | Out-Null
   if (Test-HomeOpens $Script:LauncherPackage) { Ok 'Готово: «Домой» открывает LTvLauncher.' }
   else {
@@ -646,8 +658,9 @@ function Main {
   Say '  Ничего не удаляется: приложения только отключаются, вернуть можно одной командой.' 'DarkGray'
 
   Title 'Подготовка'
-  Say '  На ТВ: Настройки → Об устройстве → 7 раз нажмите «Сборка» → «Для разработчиков» → включите «Отладка по USB»'
-  Say '  и «Отладка по сети» (если есть). Компьютер и ТВ должны быть в одной Wi-Fi сети.'
+  Say '  На ТВ: Настройки → Система → Об устройстве → 7 раз «Сборка» → «Для разработчиков» → «Отладка по USB»'
+  Say '  и «Отладка по сети» (если есть). Компьютер и ТВ — в одной Wi-Fi сети.'
+  Say "  Яндекс ТВ, Салют ТВ и другие платформы — пошагово: https://github.com/$($Script:Repo)/blob/main/docs/ADB.md" 'DarkGray'
   $Script:Adb = Get-AdbPath
   Invoke-Adb start-server | Out-Null
   if (-not (Select-Tv)) { return }
