@@ -117,6 +117,17 @@ $out = RunWithInput "n`ny`n" @('-Action', 'launcher')
 $s = State $tv
 Check 'лаунчер и парный пакет отключены вместе' ((@($s.disabled) -contains 'com.test.stock') -and (@($s.disabled) -contains 'com.test.wraith') -and ($out -match 'Готово')) $out
 
+# 11. ТВ ждёт подтверждения отладки — это не ошибка, ждём и подключаемся
+$tv = New-Tv $installed @{ auth_pending = $true }
+$out = Run @('-Action', 'info', '-Yes')
+Check 'failed to authenticate — ждём подтверждения' (($out -match 'Подключено') -and ($out -notmatch 'Не подключился')) $out
+
+# 12. Пустое пояснение — без висящего тире
+$tv = New-Tv $installed
+$out = Run @('-Action', 'clean', '-Yes')
+Check 'нет висящих тире' ($out -notmatch ' — ?
+') $out
+
 Remove-Item $tmp -Recurse -Force
 if ($failed) { Write-Host "`nПровалено: $failed" -ForegroundColor Red; exit 1 }
 Write-Host "`nВсе тесты прошли" -ForegroundColor Green

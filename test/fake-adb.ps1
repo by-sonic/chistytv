@@ -10,7 +10,10 @@ if ($argv[0] -eq '-s') { $argv = $argv[2..($argv.Count - 1)] }
 
 switch ($argv[0]) {
   'start-server' { return }
-  'connect' { "connected to $($argv[1])"; return }
+  'connect' {
+    if ($state.auth_pending) { "failed to authenticate to $($argv[1])"; return }
+    "connected to $($argv[1])"; return
+  }
   'disconnect' { "disconnected"; return }
   'get-state' { 'device'; return }
   'push' { "$($argv[1]): 1 file pushed, 0 skipped."; return }

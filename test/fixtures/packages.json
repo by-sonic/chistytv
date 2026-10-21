@@ -32,7 +32,7 @@
       "group": "telemetry",
       "action": "disable",
       "title": "Аналитика",
-      "note": "сбор данных"
+      "note": ""
     },
     {
       "id": "com.test.yandexads",

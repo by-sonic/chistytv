@@ -107,11 +107,28 @@ function Sh([string]$Command) { return Invoke-Adb shell $Command }
 
 # ─── Поиск и подключение ─────────────────────────────────────────────────
 
+# Адаптеры VPN и виртуальных машин: телевизора там нет, а скан по ним только тратит время.
+$Script:VirtualNic = '(?i)vpn|amnezia|wireguard|wintun|tap-|tun|openvpn|outline|hiddify|happ|v2ray|clash|hyper-v|vethernet|wsl|virtualbox|vmware|docker|zerotier|tailscale|radmin|hamachi'
+
+function Test-VpnRoute([string]$Ip) {
+  # Если Windows ведёт трафик к ТВ через VPN-адаптер, телевизор будет недоступен.
+  try {
+    $route = Find-NetRoute -RemoteIPAddress $Ip -ErrorAction Stop | Where-Object { $_.InterfaceAlias } | Select-Object -First 1
+    if ($route -and $route.InterfaceAlias -match $Script:VirtualNic) {
+      Warn "Трафик к $Ip идёт через «$($route.InterfaceAlias)» — VPN на компьютере закрывает доступ к домашней сети."
+      Say '    Выключите VPN на время настройки или разрешите в нём доступ к локальной сети.' 'DarkGray'
+      return $true
+    }
+  } catch { }
+  return $false
+}
+
 function Get-LocalPrefixes {
   $prefixes = @()
   foreach ($nic in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
     if ($nic.OperationalStatus -ne 'Up') { continue }
-    if ($nic.NetworkInterfaceType -eq 'Loopback') { continue }
+    if ($nic.NetworkInterfaceType -in @('Loopback', 'Tunnel', 'Ppp')) { continue }
+    if ("$($nic.Name) $($nic.Description)" -match $Script:VirtualNic) { continue }
     foreach ($addr in $nic.GetIPProperties().UnicastAddresses) {
       if ($addr.Address.AddressFamily -ne 'InterNetwork') { continue }
       $ip = $addr.Address.ToString()
@@ -132,7 +149,7 @@ function Find-Tvs {
       $client = New-Object Net.Sockets.TcpClient
       $probes += [pscustomobject]@{ Ip = "$prefix.$i"; Client = $client; Task = $client.ConnectAsync("$prefix.$i", 5555) }
     }
-    Start-Sleep -Milliseconds 1500
+    Start-Sleep -Milliseconds 2500
     foreach ($p in $probes) {
       if ($p.Task.Status -eq 'RanToCompletion' -and $p.Client.Connected) { $found += $p.Ip }
       $p.Client.Close()
@@ -146,8 +163,10 @@ function Connect-Tv([string]$Ip) {
   if ($target -notmatch ':\d+$') { $target = "$target`:5555" }
   $Script:Serial = $null
   $out = Invoke-Adb connect $target
-  if ($out -notmatch 'connected to') {
+  # «failed to authenticate» — телевизор показал окно «Разрешить отладку?» и ждёт ответа.
+  if ($out -notmatch 'connected to|failed to authenticate|unauthorized') {
     Fail "Не подключился к $target`: $out"
+    Test-VpnRoute ($target -replace ':\d+$', '') | Out-Null
     Say '    Проверьте: ТВ включён, в той же Wi-Fi сети, в «Для разработчиков» включена отладка (USB и по сети).' 'DarkGray'
     Say '    На Android 11+ без пункта «Отладка по сети» — выберите в меню «Подключение по коду» (беспроводная отладка).' 'DarkGray'
     return $false
@@ -333,6 +352,11 @@ function Show-Info {
   Say "  Приложений: $($Script:Info.Installed.Count), уже отключено: $($Script:Info.Disabled.Count)"
 }
 
+function Format-Entry($E) {
+  if ($E.note) { return "$($E.title) — $($E.note)" }
+  return $E.title
+}
+
 function Invoke-Clean {
   Title 'Чистка'
   $plan = @(Get-Plan)
@@ -348,7 +372,7 @@ function Invoke-Clean {
 
   if ($recommended.Count) {
     Say "  Реклама, слежка и фоновый мусор — отключить безопасно ($($recommended.Count)):" 'White'
-    foreach ($e in $recommended) { Say "    • $($e.title) — $($e.note)" 'DarkGray' }
+    foreach ($e in $recommended) { Say "    • $(Format-Entry $e)" 'DarkGray' }
     if (Confirm 'Отключить их?') { Disable-Packages $recommended | Out-Null }
   }
 
@@ -356,7 +380,7 @@ function Invoke-Clean {
     Say ''
     Say '  Приложения, которые вы могли использовать. Введите номера тех, что НЕ нужны (через запятую), или Enter — оставить всё:' 'White'
     for ($i = 0; $i -lt $optional.Count; $i++) {
-      Say ("    {0,2}. {1} — {2}" -f ($i + 1), $optional[$i].title, $optional[$i].note) 'DarkGray'
+      Say ("    {0,2}. {1}" -f ($i + 1), (Format-Entry $optional[$i])) 'DarkGray'
     }
     $answer = Ask 'Номера'
     if ($answer) {
@@ -461,7 +485,7 @@ function Send-HappSubscription([string]$Sub) {
     Ok 'Подписка отправлена в Happ. На телевизоре подтвердите добавление и разрешите VPN-подключение.'
     return $true
   }
-  Warn 'Happ не принял ссылку напрямую.'
+  Warn "Happ не принял ссылку напрямую: $((($out -split "`n") | Where-Object { $_ -match 'Error|Exception' } | Select-Object -First 1))"
   if ($Yes) { return $false }
   Say '  Есть официальный способ Happ для ТВ: в Happ на телевизоре выберите «Web Import» — появится 5-значный код.' 'White'
   Say '  Ссылка подписки при этом пройдёт через сервер Happ (check.happ.su).' 'DarkGray'
