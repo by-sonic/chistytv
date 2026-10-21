@@ -39,6 +39,20 @@ switch ($argv[0]) {
       Save
       'Success'; return
     }
+    if ($cmd -match '^cmd package resolve-activity .*-p (\S+)') {
+      $p = $Matches[1]
+      if ($state.installed -contains $p) { "priority=0 preferredOrder=0`n$p/$p.MainActivity" } else { 'No activity found' }
+      return
+    }
+    if ($cmd -match '^cmd package set-home-activity (\S+)') { $state.home = $Matches[1]; Save; 'Success'; return }
+    if ($cmd -match '^input keyevent') { return }
+    if ($cmd -eq 'dumpsys activity activities') {
+      $top = 'com.google.android.apps.tv.launcherx/.StockActivity'
+      if ($state.home_works -and $state.home) { $top = $state.home }
+      "  topResumedActivity=ActivityRecord{1a2b u0 $top t12}"
+      return
+    }
+    if ($cmd -match '^dumpsys wifi') { $state.wifi_owner; return }
     if ($cmd -match '^am start ') { $state.started = @($state.started) + $cmd; Save; 'Starting: Intent { act=android.intent.action.VIEW }'; return }
     if ($cmd -match '^settings list') { 'a=1'; return }
     if ($cmd -match '^settings get global private_dns_mode') { $state.dns_mode; return }

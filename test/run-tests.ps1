@@ -17,7 +17,7 @@ function New-Tv([string[]]$Installed, [hashtable]$Extra = @{}) {
       'ro.build.version.release' = '11'; 'ro.build.version.sdk' = '30'; 'ro.product.cpu.abi' = 'armeabi-v7a'
       'ro.product.cpu.abilist' = 'armeabi-v7a,armeabi'
     }
-    installed = $Installed; disabled = @(); started = @(); dns_mode = 'opportunistic'; dns_spec = 'null'; refuse = $false
+    installed = $Installed; disabled = @(); started = @(); dns_mode = 'opportunistic'; dns_spec = 'null'; refuse = $false; home = ''; home_works = $false; wifi_owner = ''
   }
   foreach ($k in $Extra.Keys) { $state[$k] = $Extra[$k] }
   $path = Join-Path $tmp ("tv-" + [guid]::NewGuid().ToString('N').Substring(0, 6) + '.json')
@@ -69,10 +69,14 @@ $out = Run @('-Action', 'clean', '-Yes')
 Check 'запрет прошивки распознан' ($out -match 'Прошивка не даёт отключать') $out
 
 # 4. Импорт подписки в Happ (приложения уже стоят, сеть не нужна)
-$tv = New-Tv ($installed + @('com.happproxy', 'com.liskovsoft.smarttubetv.beta'))
+$tv = New-Tv ($installed + @('com.happproxy', 'org.smarttube.stable'))
 $out = Run @('-Action', 'youtube', '-Yes', '-Subscription', 'https://example.com/sub/abc123')
 $s = State $tv
 Check 'подписка отправлена через happ://add/' (@($s.started | Where-Object { $_ -match "happ://add/https://example\.com/sub/abc123" }).Count -eq 1) $out
+
+$out = Run @('-Action', 'youtube', '-Yes', '-Subscription', 'https://example.com/sub?id=1&lang=ru')
+$s = State $tv
+Check 'ссылка с & в параметрах проходит' (@($s.started | Where-Object { $_ -match "-p com\.happproxy -d 'happ://add/https://example\.com/sub\?id=1&lang=ru'" }).Count -eq 1) $out
 
 # 5. Подозрительная «ссылка» отвергается
 $out = Run @('-Action', 'youtube', '-Yes', '-Subscription', "https://x.com/'; reboot")
@@ -83,6 +87,18 @@ $tv = New-Tv $installed
 Run @('-Action', 'dns', '-Yes') | Out-Null
 $s = State $tv
 Check 'AdGuard DNS включён' ($s.dns_mode -eq 'hostname' -and $s.dns_spec -eq 'dns.adguard-dns.com')
+
+# 7. Главный экран: прошивка слушается set-home-activity
+$tv = New-Tv ($installed + @('com.leanbitlab.ltvL')) @{ home_works = $true }
+$out = Run @('-Action', 'launcher', '-Yes')
+$s = State $tv
+Check 'лаунчер назначен главным' ($s.home -eq 'com.leanbitlab.ltvL/com.leanbitlab.ltvL.MainActivity' -and $out -match 'открывает LTvLauncher') $out
+
+# 8. Главный экран: прошивка упрямится — без согласия штатный лаунчер не трогаем
+$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.test.launcher')) @{ home_works = $false }
+$out = Run @('-Action', 'launcher', '-Yes')
+$s = State $tv
+Check 'предложен мягкий способ, штатный лаунчер цел' (($out -match 'Home Button Fix') -and (@($s.disabled).Count -eq 0)) $out
 
 Remove-Item $tmp -Recurse -Force
 if ($failed) { Write-Host "`nПровалено: $failed" -ForegroundColor Red; exit 1 }

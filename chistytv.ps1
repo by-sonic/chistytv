@@ -428,25 +428,80 @@ function Install-Apk([string]$File, [string]$Label) {
   return $false
 }
 
-function Get-AbiPatterns {
-  if ("$($Script:Info.AbiList)" -match 'arm64') { return @('arm64', 'universal', 'armeabi', '\.apk$') }
-  return @('armeabi-v7a', 'arm32', 'universal', '\.apk$')
+# Пакеты SmartTube: новые (после смены ключа в конце 2025) и старые.
+$Script:SmartTubePackages = @('org.smarttube.stable', 'org.smarttube.beta', 'app.smarttube.fdroid',
+  'com.teamsmart.videomanager.tv', 'com.liskovsoft.smarttubetv.beta')
+$Script:HappPackage = 'com.happproxy'
+$Script:LauncherPackage = 'com.leanbitlab.ltvL'
+
+function Get-Abi {
+  # Основная сборка SmartTube для ТВ — armeabi-v7a; arm64 берём, только если 32-битных библиотек нет.
+  $list = "$($Script:Info.AbiList)"
+  if ($list -match 'armeabi-v7a') { return 'armeabi-v7a' }
+  if ($list -match 'arm64-v8a') { return 'arm64-v8a' }
+  return 'universal'
+}
+
+function Get-SmartTubeSource {
+  # Релиз с тегом latest обновляется на месте и хранит файлы с постоянными именами.
+  $abi = Get-Abi
+  $name = 'smarttube_stable.apk'
+  if ($abi -ne 'universal') { $name = "smarttube_stable_$abi.apk" }
+  return [pscustomobject]@{ Name = $name; Url = "https://github.com/yuliskov/SmartTube/releases/download/latest/$name" }
+}
+
+function Test-SubscriptionUrl([string]$Url) {
+  # Ссылка уходит в shell телевизора внутри одинарных кавычек: кавычки и пробелы недопустимы.
+  return ($Url -match '^https?://[A-Za-z0-9\-\._~:/\?#\[\]@!\$\(\)\*\+,;=%&]+$')
+}
+
+function Send-HappSubscription([string]$Sub) {
+  $out = Sh "am start -a android.intent.action.VIEW -p $($Script:HappPackage) -d 'happ://add/$Sub'"
+  if ($out -notmatch 'Error|Exception|unable to resolve') {
+    Ok 'Подписка отправлена в Happ. На телевизоре подтвердите добавление и разрешите VPN-подключение.'
+    return $true
+  }
+  Warn 'Happ не принял ссылку напрямую.'
+  if ($Yes) { return $false }
+  Say '  Есть официальный способ Happ для ТВ: в Happ на телевизоре выберите «Web Import» — появится 5-значный код.' 'White'
+  Say '  Ссылка подписки при этом пройдёт через сервер Happ (check.happ.su).' 'DarkGray'
+  if (-not (Confirm 'Отправить подписку через сервер Happ?')) {
+    Say '  Тогда добавьте вручную: Happ → «+» → вставьте ссылку подписки с пульта.' 'DarkGray'
+    return $false
+  }
+  $code = Ask 'Код с экрана телевизора'
+  if ($code -notmatch '^\d{5}$') { Fail 'Код — это 5 цифр.'; return $false }
+  $body = @{ data = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sub)) } | ConvertTo-Json -Compress
+  try {
+    Invoke-RestMethod -UseBasicParsing -Method Post -Uri "https://check.happ.su/sendtv/$code" -ContentType 'application/json' -Body $body | Out-Null
+    Ok 'Отправлено. Подтвердите добавление подписки в Happ на телевизоре.'
+    return $true
+  } catch {
+    Fail "Сервер Happ не принял код: $($_.Exception.Message)"
+    return $false
+  }
 }
 
 function Invoke-YouTube {
   Title 'YouTube без тормозов'
   Say '  1) SmartTube — открытый клиент YouTube для ТВ: без рекламы, со SponsorBlock и 4K.' 'White'
-  $patterns = Get-AbiPatterns
-  if ($Script:Info.Installed -match '^com\.liskovsoft\.smarttubetv') { Ok 'SmartTube уже установлен' }
-  elseif (Confirm 'Установить SmartTube?') {
-    $apk = Get-Apk 'smarttube' { Get-GitHubAsset 'yuliskov/SmartTube' $patterns }
-    Install-Apk $apk 'SmartTube' | Out-Null
+  $installedTube = @($Script:SmartTubePackages | Where-Object { $Script:Info.Installed -contains $_ })
+  if ($installedTube -contains 'org.smarttube.stable' -or $installedTube -contains 'org.smarttube.beta') {
+    Ok 'SmartTube уже установлен'
+  } else {
+    if ($installedTube.Count) {
+      Warn "Стоит старая сборка SmartTube ($($installedTube -join ', ')): после смены ключа разработчика она не обновляется. Поставлю новую рядом, старую потом можно удалить."
+    }
+    if (Confirm 'Установить SmartTube (с официального GitHub)?') {
+      $apk = Get-Apk 'smarttube' { Get-SmartTubeSource }
+      Install-Apk $apk 'SmartTube' | Out-Null
+    }
   }
 
   Say ''
-  Say "  2) VPN на телевизор — без него YouTube в России тормозит." 'White'
-  if ($Script:Info.Installed -contains 'com.happproxy') { Ok 'Happ уже установлен' }
-  elseif (Confirm 'Установить VPN-клиент Happ?') {
+  Say '  2) VPN на телевизор — без него YouTube в России тормозит.' 'White'
+  if ($Script:Info.Installed -contains $Script:HappPackage) { Ok 'Happ уже установлен' }
+  elseif (Confirm 'Установить VPN-клиент Happ (с официального GitHub)?') {
     $apk = Get-Apk 'happ' { [pscustomobject]@{ Name = 'Happ.apk'; Url = 'https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk' } }
     Install-Apk $apk 'Happ' | Out-Null
   }
@@ -458,11 +513,10 @@ function Invoke-YouTube {
     $sub = Ask 'Вставьте ссылку подписки (https://…) или Enter — пропустить'
   }
   if ($sub) {
-    if ($sub -notmatch '^https?://[^\s''"]+$') { Fail 'Это не похоже на ссылку подписки.'; return }
-    $out = Sh "am start -a android.intent.action.VIEW -d 'happ://add/$sub'"
-    if ($out -match 'Error|Exception') { Fail "Не удалось открыть Happ: $out"; return }
-    Ok 'Подписка отправлена в Happ. На телевизоре подтвердите добавление и разрешите VPN-подключение.'
-    Say '  В Happ выберите сервер (лучше «Автовыбор») и включите VPN, затем откройте SmartTube.' 'DarkGray'
+    if (-not (Test-SubscriptionUrl $sub)) { Fail 'Это не похоже на ссылку подписки.'; return }
+    if (Send-HappSubscription $sub) {
+      Say '  В Happ выберите сервер (лучше «Автовыбор») и включите VPN, затем откройте SmartTube.' 'DarkGray'
+    }
   }
 }
 
@@ -487,9 +541,72 @@ function Invoke-Dns {
   }
 }
 
+function Get-FocusedActivity {
+  $out = Sh 'dumpsys activity activities'
+  $line = ($out -split "`n" | Where-Object { $_ -match 'topResumedActivity|mResumedActivity|mFocusedApp' } | Select-Object -First 1)
+  return "$line"
+}
+
+function Test-HomeOpens([string]$Pkg) {
+  Sh 'input keyevent KEYCODE_HOME' | Out-Null
+  Start-Sleep -Seconds 3
+  return ((Get-FocusedActivity) -match [regex]::Escape($Pkg))
+}
+
 function Invoke-Launcher {
-  Title 'Новый главный экран'
-  Say '  Скоро: чистый лаунчер без рекламных рядов. Пока — PROMPT.md для ИИ-ассистента.' 'DarkGray'
+  Title 'Новый главный экран без рекламы'
+  Say '  LTvLauncher — открытый лаунчер (GPL-3.0) без рекламных рядов и рекомендаций.' 'White'
+  Say '  Штатный главный экран не удаляется и не отключается, пока вы сами не попросите.' 'DarkGray'
+  if ($Script:Info.Installed -notcontains $Script:LauncherPackage) {
+    if (-not (Confirm 'Установить LTvLauncher (с официального GitHub)?')) { return }
+    $abi = Get-Abi
+    $apk = Get-Apk 'ltvlauncher' { Get-GitHubAsset 'leanbitlab-org/LtvLauncher' @("$abi-release\.apk$", 'universal-release\.apk$') }
+    if (-not (Install-Apk $apk 'LTvLauncher')) { return }
+  }
+
+  $component = (Sh "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -p $($Script:LauncherPackage)") -split "`n" |
+    ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^[\w\.]+/[\w\.\$]+$' } | Select-Object -Last 1
+  if (-not $component) { Fail 'Не нашёл экран лаунчера — откройте LTvLauncher вручную один раз и запустите пункт снова.'; return }
+  $out = Sh "cmd package set-home-activity $component"
+  if ($out -notmatch 'Success') { Warn "set-home-activity: $out" }
+
+  if (Test-HomeOpens $Script:LauncherPackage) {
+    Ok 'Кнопка «Домой» открывает LTvLauncher.'
+    return
+  }
+
+  Warn 'Прошивка всё равно открывает штатный главный экран (так делает Google TV и часть Яндекс ТВ).'
+  Say '  Мягкий способ: на ТВ откройте Настройки → Специальные возможности → «Home Button Fix» (LTvLauncher) и включите.' 'White'
+  Say '  Затем нажмите «Домой» на пульте.' 'DarkGray'
+  if ($Yes) { return }
+  if (Confirm 'Включили? Проверить ещё раз?') {
+    if (Test-HomeOpens $Script:LauncherPackage) { Ok 'Готово: «Домой» открывает LTvLauncher.'; return }
+  }
+
+  $stock = @($Script:Db.packages | Where-Object { $_.launcher -and $Script:Info.Installed -contains $_.id -and $Script:Info.Disabled -notcontains $_.id })
+  if (-not $stock.Count) { Warn 'Штатный лаунчер этой прошивки не знаю — оставляю как есть. Подробнее: PROMPT.md.'; return }
+  Say ''
+  Say '  Жёсткий способ — отключить штатный лаунчер. Обратимо через «Вернуть как было».' 'Yellow'
+  foreach ($e in $stock) { Say "    • $($e.title) ($($e.id))" 'DarkGray' }
+  if (-not (Confirm 'Отключить штатный лаунчер?' $false)) { return }
+
+  $wifiOwners = Sh "dumpsys wifi | grep -o 'cname=[^ ]*'"
+  $toDisable = @()
+  foreach ($e in $stock) {
+    if ($wifiOwners -match [regex]::Escape($e.id)) {
+      Warn "$($e.id) владеет сохранённой сетью Wi-Fi: при отключении ТВ потеряет Wi-Fi. Пропускаю."
+      Say '    Чтобы снять это: Настройки → Сеть → забудьте сеть и подключитесь заново, потом запустите пункт снова.' 'DarkGray'
+      continue
+    }
+    $toDisable += $e
+  }
+  if (-not $toDisable.Count) { return }
+  Disable-Packages $toDisable | Out-Null
+  if (Test-HomeOpens $Script:LauncherPackage) { Ok 'Готово: «Домой» открывает LTvLauncher.' }
+  else {
+    Fail 'Не помогло. Возвращаю штатный лаунчер.'
+    foreach ($e in $toDisable) { Sh "pm enable $($e.id)" | Out-Null }
+  }
 }
 
 function Show-Finish {
@@ -504,14 +621,16 @@ function Show-Menu {
     Title 'Что делаем?'
     Say '  1. Убрать рекламу и мусор (рекомендуется начать с этого)'
     Say '  2. YouTube без тормозов: SmartTube + VPN'
-    Say '  3. Блокировка рекламы через DNS'
-    Say '  4. Вернуть как было'
+    Say '  3. Новый главный экран без рекламных рядов'
+    Say '  4. Блокировка рекламы через DNS'
+    Say '  5. Вернуть как было'
     Say '  0. Выход'
     switch (Ask 'Пункт' '1') {
       '1' { Invoke-Clean }
       '2' { Invoke-YouTube }
-      '3' { Invoke-Dns }
-      '4' { Invoke-Restore }
+      '3' { Invoke-Launcher }
+      '4' { Invoke-Dns }
+      '5' { Invoke-Restore }
       '0' { return }
       default { Warn 'Нет такого пункта' }
     }
