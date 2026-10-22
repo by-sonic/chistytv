@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.1.1'
+$Script:Version = '0.1.2'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -547,11 +547,18 @@ function Invoke-YouTube {
   }
 }
 
+# Работает ли на ТВ поиск адресов. Строку «PING host (ip)» ping печатает только после того, как имя нашлось,
+# поэтому проверка не зависит от того, отвечает ли сервер на ping.
+function Test-TvDns {
+  $out = "$(Sh 'ping -c 1 -W 2 connectivitycheck.gstatic.com 2>&1')"
+  return ($out -match 'PING \S+ \(\d')
+}
+
 function Invoke-Dns {
   Title 'Блокировка рекламы через DNS'
   if ($Script:Info.Sdk -lt 28) { Warn 'Нужен Android 9 и новее.'; return }
-  $mode = Sh 'settings get global private_dns_mode'
-  $spec = Sh 'settings get global private_dns_specifier'
+  $mode = "$(Sh 'settings get global private_dns_mode')".Trim()
+  $spec = "$(Sh 'settings get global private_dns_specifier')".Trim()
   if ($mode -eq 'hostname') {
     Say "  Сейчас включён частный DNS: $spec"
     if (Confirm 'Выключить?' $false) {
@@ -561,11 +568,30 @@ function Invoke-Dns {
     return
   }
   Say '  AdGuard DNS режет рекламу и трекеры в приложениях. Рекламу внутри YouTube не убирает — для неё SmartTube.' 'DarkGray'
-  if (Confirm 'Включить AdGuard DNS?') {
-    Sh 'settings put global private_dns_specifier dns.adguard-dns.com' | Out-Null
-    Sh 'settings put global private_dns_mode hostname' | Out-Null
-    Ok 'Включено. Отключить можно здесь же или в настройках сети ТВ.'
+  if (-not (Confirm 'Включить AdGuard DNS?')) { return }
+  $online = Test-TvDns
+  if (-not $online) { Warn 'У телевизора сейчас нет интернета — проверить DNS не получится.' }
+  Sh 'settings put global private_dns_specifier dns.adguard-dns.com' | Out-Null
+  Sh 'settings put global private_dns_mode hostname' | Out-Null
+  if (-not $online) { Ok 'Включено. Если после появления интернета ТВ напишет «нет связи» — выключите здесь же.'; return }
+
+  # Частный DNS ходит по порту 853. Если его режет провайдер или роутер, ТВ остаётся без интернета —
+  # проверяем и при неудаче сразу возвращаем как было.
+  Say '  Проверяю, что интернет на ТВ работает с новым DNS…' 'DarkGray'
+  $ok = $false
+  foreach ($i in 1..4) {
+    Start-Sleep -Seconds 2
+    if (Test-TvDns) { $ok = $true; break }
   }
+  if ($ok) { Ok 'Включено, интернет работает. Отключить можно здесь же или в настройках сети ТВ.'; return }
+
+  if ($mode -notin @('off', 'opportunistic')) { $mode = 'opportunistic' }
+  Sh "settings put global private_dns_mode $mode" | Out-Null
+  if ($spec -and $spec -ne 'null') { Sh "settings put global private_dns_specifier $spec" | Out-Null }
+  else { Sh 'settings delete global private_dns_specifier' | Out-Null }
+  Warn 'С AdGuard DNS телевизор остался без интернета: провайдер или роутер не пропускают DNS-over-TLS (порт 853).'
+  Ok 'Вернул DNS как было — интернет на ТВ работает.'
+  Say '  Можно прописать AdGuard DNS в роутере (94.140.14.14 и 94.140.15.15) — тогда реклама режется у всех устройств дома.' 'DarkGray'
 }
 
 function Get-FocusedActivity {

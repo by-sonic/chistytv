@@ -93,6 +93,13 @@ Run @('-Action', 'dns', '-Yes') | Out-Null
 $s = State $tv
 Check 'AdGuard DNS включён' ($s.dns_mode -eq 'hostname' -and $s.dns_spec -eq 'dns.adguard-dns.com')
 
+# 6б. Провайдер режет DNS-over-TLS: ТВ остался бы без интернета — скрипт сам возвращает как было
+$tv = New-Tv $installed @{ dot_blocked = $true }
+$out = Run @('-Action', 'dns', '-Yes')
+$s = State $tv
+Check 'DNS откатился, если интернет пропал' ($s.dns_mode -eq 'opportunistic' -and $s.dns_spec -eq 'null') $out
+Check 'объяснили причину' ($out -match 'порт 853') $out
+
 # 7. Главный экран: прошивка слушается set-home-activity
 $tv = New-Tv ($installed + @('com.leanbitlab.ltvL')) @{ home_works = $true }
 $out = Run @('-Action', 'launcher', '-Yes')

@@ -63,6 +63,13 @@ switch ($argv[0]) {
     if ($cmd -match '^settings get global private_dns_specifier') { $state.dns_spec; return }
     if ($cmd -match '^settings put global private_dns_mode (\S+)') { $state.dns_mode = $Matches[1]; Save; return }
     if ($cmd -match '^settings put global private_dns_specifier (\S+)') { $state.dns_spec = $Matches[1]; Save; return }
+    if ($cmd -match '^settings delete global private_dns_specifier') { $state.dns_spec = 'null'; Save; return }
+    if ($cmd -match '^ping ') {
+      # dot_blocked: провайдер режет порт 853 — с частным DNS имена перестают находиться
+      if ($state.offline -or ($state.dot_blocked -and $state.dns_mode -eq 'hostname')) { 'ping: unknown host connectivitycheck.gstatic.com'; return }
+      "PING connectivitycheck.gstatic.com (142.250.74.35) 56(84) bytes of data.`n64 bytes from 142.250.74.35: icmp_seq=1 ttl=117 time=12 ms"
+      return
+    }
     if ($cmd -match '^rm ') { return }
     "unknown shell command: $cmd"; return
   }
