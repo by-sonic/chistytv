@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.1.2'
+$Script:Version = '0.1.3'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -398,6 +398,16 @@ function Invoke-Clean {
   Say ''
   Ok 'Готово. Перезагрузите телевизор и проверьте, что всё нужное работает.'
   Say '  Что-то сломалось — запустите ЧистыйТВ ещё раз и выберите «Вернуть как было».' 'DarkGray'
+  Show-HomeHint
+}
+
+# Чистка убирает рекламные сервисы и слежку, но ряды «рекомендаций» на главном экране рисует сам штатный
+# лаунчер. Его не отключаем — иначе ТВ останется без главного экрана. Без этой подсказки кажется, что ничего не произошло.
+function Show-HomeHint {
+  if ($Script:Info.Installed -contains $Script:LauncherPackage) { return }
+  Say ''
+  Say '  Ряды с рекламой на главном экране рисует сам штатный лаунчер — чистка его не трогает, иначе ТВ' 'Yellow'
+  Say '  останется без главного экрана. Чтобы убрать и их, выберите «Новый главный экран без рекламных рядов».' 'Yellow'
 }
 
 function Invoke-Restore {

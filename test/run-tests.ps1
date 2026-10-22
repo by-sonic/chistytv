@@ -58,6 +58,7 @@ $out = Run @('-Action', 'clean', '-Yes')
 $s = State $tv
 Check 'рекомендованные отключены' (@($safe | Where-Object { $s.disabled -notcontains $_ }).Count -eq 0) $out
 Check 'необязательные не тронуты без вопроса' (@($ask | Where-Object { $s.disabled -contains $_ }).Count -eq 0)
+Check 'подсказали про рекламные ряды штатного лаунчера' ($out -match 'рисует сам штатный лаунчер') $out
 Check 'keep и неизвестные не тронуты' (($s.disabled -notcontains $keep[0]) -and ($s.disabled -notcontains 'com.unknown.app') -and ($s.disabled -notcontains 'com.android.settings'))
 $log = Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chistytv.txt' | Select-Object -First 1
 Check 'журнал отката записан' ($log -and ((Get-Content $log.FullName) -contains $safe[0]))

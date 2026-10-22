@@ -15,6 +15,7 @@
     { "id": "com.yandex.android.advid", "platform": "yandex", "group": "ads", "action": "disable", "title": "Рекламный ID Яндекса", "note": "главный источник рекламы на Яндекс ТВ" },
     { "id": "com.yandex.tv.bugreportsender", "platform": "yandex", "group": "telemetry", "action": "disable", "title": "Отправка отчётов Яндексу", "note": "телеметрия" },
     { "id": "com.yandex.launcher.updaterapp", "platform": "yandex", "group": "updates", "action": "ask", "title": "Обновления Яндекс ТВ", "note": "обновления часто возвращают рекламу; без него не будет и новых прошивок" },
+    { "id": "com.cultraview.osupdate", "platform": "yandex", "group": "updates", "action": "ask", "title": "Обновление прошивки (CVTE)", "note": "прошивка с обновлением может вернуть рекламу; без него не будет и новых прошивок" },
     { "id": "com.yandex.tv.appudater", "platform": "yandex", "group": "updates", "action": "ask", "title": "Обновления Яндекс ТВ (прошивки 2026)", "note": "то же, что выше, на новых прошивках" },
     { "id": "com.yandex.io.sdk", "platform": "yandex", "group": "ads", "action": "ask", "title": "Сервисы Яндекса (io.sdk)", "note": "тоже подтягивает рекламу, но после отключения может перестать работать Алиса" },
     { "id": "com.yandex.tv.alice", "platform": "yandex", "group": "assistant", "action": "ask", "title": "Алиса", "note": "голосовой помощник" },
