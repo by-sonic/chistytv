@@ -128,6 +128,17 @@ $out = Run @('-Action', 'clean', '-Yes')
 Check 'нет висящих тире' ($out -notmatch ' — ?
 ') $out
 
+# 13. Запуск «irm | iex»: загрузчик без BOM и только ASCII, иначе PowerShell не поймёт блок param
+$launcher = [IO.File]::ReadAllBytes($script)
+Check 'chistytv.ps1 без BOM' (-not ($launcher[0] -eq 0xEF -and $launcher[1] -eq 0xBB -and $launcher[2] -eq 0xBF))
+Check 'chistytv.ps1 только ASCII' (@($launcher | Where-Object { $_ -gt 127 }).Count -eq 0)
+$errs = $null
+[void][System.Management.Automation.Language.Parser]::ParseInput([Text.Encoding]::UTF8.GetString($launcher), [ref]$null, [ref]$errs)
+Check 'загрузчик разбирается как текст для iex' ($errs.Count -eq 0) ($errs | Out-String)
+$errs = $null
+[void][System.Management.Automation.Language.Parser]::ParseInput([IO.File]::ReadAllText((Join-Path $root 'src\main.ps1'), [Text.Encoding]::UTF8), [ref]$null, [ref]$errs)
+Check 'src/main.ps1 разбирается' ($errs.Count -eq 0) ($errs | Out-String)
+
 Remove-Item $tmp -Recurse -Force
 if ($failed) { Write-Host "`nПровалено: $failed" -ForegroundColor Red; exit 1 }
 Write-Host "`nВсе тесты прошли" -ForegroundColor Green

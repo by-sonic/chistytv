@@ -1,4 +1,4 @@
-﻿# Проверка базы пакетов: структура, дубликаты, конфликт с защитными правилами chistytv.ps1.
+﻿# Проверка базы пакетов: структура, дубликаты, конфликт с защитными правилами src/main.ps1.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $root = Split-Path $PSScriptRoot
@@ -16,10 +16,10 @@ foreach ($e in $db.packages) {
 foreach ($d in ($db.packages | Group-Object id | Where-Object Count -gt 1)) { $errors += "дубликат: $($d.Name)" }
 
 # Защитные шаблоны берём из самого скрипта, чтобы проверка не разъезжалась с ним.
-$script = [IO.File]::ReadAllText((Join-Path $root 'chistytv.ps1'), [Text.Encoding]::UTF8)
+$script = [IO.File]::ReadAllText((Join-Path $root 'src\main.ps1'), [Text.Encoding]::UTF8)
 $block = [regex]::Match($script, '\$Script:ProtectPatterns = @\((?<p>[\s\S]*?)\n\)').Groups['p'].Value
 $patterns = [regex]::Matches($block, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value }
-if (-not $patterns) { $errors += 'не нашёл ProtectPatterns в chistytv.ps1' }
+if (-not $patterns) { $errors += 'не нашёл ProtectPatterns в src/main.ps1' }
 foreach ($e in ($db.packages | Where-Object { $_.action -ne 'keep' })) {
   foreach ($p in $patterns) {
     if ($e.id -match $p) { $errors += "$($e.id) ($($e.action)) попадает под защиту «$p» — скрипт его не тронет" }
