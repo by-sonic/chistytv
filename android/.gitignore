@@ -1,0 +1,15 @@
+# Gradle и сборка
+.gradle/
+.kotlin/
+build/
+local.properties
+*.iml
+.idea/
+.cxx/
+.externalNativeBuild/
+captures/
+.DS_Store
+# Ключ подписи никогда не кладём в репозиторий: он лежит в ~/.chistytv
+*.jks
+*.keystore
+signing.properties

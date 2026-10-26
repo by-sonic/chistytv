@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Телевизор с галочкой: экран чистый. Всё внутри безопасной зоны 66dp -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#33FFFFFF"
+        android:pathData="M35,37h38a7,7 0 0 1 7,7v22a7,7 0 0 1 -7,7h-38a7,7 0 0 1 -7,-7v-22a7,7 0 0 1 7,-7z"
+        android:strokeWidth="4"
+        android:strokeColor="#FFFFFFFF" />
+    <path
+        android:pathData="M45,79h18"
+        android:strokeWidth="4"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M44,55l7,7l14,-14"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M73,22l2.4,6.1l6.1,2.4l-6.1,2.4l-2.4,6.1l-2.4,-6.1l-6.1,-2.4l6.1,-2.4z" />
+</vector>

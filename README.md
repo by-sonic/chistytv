@@ -24,6 +24,11 @@ irm https://raw.githubusercontent.com/by-sonic/chistytv/main/chistytv.ps1 | iex
 
 Это одна строка в PowerShell на Windows (Win+X → «Терминал»). Ничего ставить заранее не нужно.
 
+**Нет компьютера?** То же самое — приложением для Android, прямо с телефона по Wi-Fi:
+**[📱 скачать APK](https://github.com/by-sonic/chistytv/releases/latest/download/ChistyTV.apk)** · [подробнее](android/README.md)
+
+<p align="center"><img src="android/docs/screens.png" alt="ЧистыйТВ для Android" width="760"/></p>
+
 ---
 
 ## 🤔 Зачем
@@ -103,6 +108,10 @@ git clone https://github.com/by-sonic/chistytv; cd chistytv
 
 **Это законно? Гарантия не слетит?**
 Отладка — штатная функция Android, root не нужен, система не модифицируется. Всё отключённое включается обратно.
+
+**Компьютера нет, только телефон.**
+Есть [приложение для Android](android/README.md) — то же самое по Wi-Fi с телефона, включая подключение
+по коду для Android 11+. На iPhone так не получится: iOS не даёт приложениям работать с ADB.
 
 **Мой телевизор — Samsung или LG.**
 Tizen и webOS — не Android, ЧистыйТВ с ними не работает. Для YouTube проще всего приставка на Android TV.
