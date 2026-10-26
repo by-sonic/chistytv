@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.1.3'
+$Script:Version = '0.1.4'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -72,6 +72,39 @@ function Confirm([string]$Question, [bool]$Default = $true) {
 
 # ─── ADB ──────────────────────────────────────────────────────────────────
 
+# У части провайдеров dl.google.com отдаёт на архив 404. Тогда берём закреплённую версию с запасных хостов
+# и сверяем SHA-256: подменённый архив не пройдёт. Хэш — от архива, чья SHA-1 совпала с репозиторием Google.
+$Script:AdbOfficial = 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip'
+$Script:AdbPinned = @{
+  File   = 'platform-tools_r37.0.1-win.zip'
+  Sha256 = '45F4D63113E895EBDE0C90F194099A4676B6AC653BD28D54314A9E022BBC1A99'
+  Hosts  = @('https://redirector.gvt1.com/edgedl/android/repository/', 'https://mirrors.cloud.tencent.com/AndroidSDK/')
+}
+
+function Save-PlatformTools([string]$Zip) {
+  try {
+    Invoke-WebRequest -UseBasicParsing -Uri $Script:AdbOfficial -OutFile $Zip
+    return
+  } catch {
+    Warn "dl.google.com не отдал ADB ($("$($_.Exception.Message)".Split("`n")[0])), пробую запасные источники."
+  }
+  foreach ($base in $Script:AdbPinned.Hosts) {
+    $url = $base + $Script:AdbPinned.File
+    $hostName = ([uri]$url).Host
+    try {
+      Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $Zip
+      if ((Get-FileHash $Zip -Algorithm SHA256).Hash -eq $Script:AdbPinned.Sha256) { Ok "ADB скачан с $hostName, контрольная сумма совпала"; return }
+      Warn "$hostName`: контрольная сумма не совпала, файл отброшен."
+    } catch {
+      Warn "$hostName`: $("$($_.Exception.Message)".Split("`n")[0])"
+    }
+    Remove-Item $Zip -Force -ErrorAction SilentlyContinue
+  }
+  throw ("Не удалось скачать ADB. Скачайте platform-tools для Windows с developer.android.com/tools/releases/platform-tools, " +
+    "распакуйте в $(Split-Path $Zip) (чтобы получилось ...\ChistyTV\platform-tools\adb.exe) и запустите ЧистыйТВ снова. " +
+    'Или включите VPN на компьютере только на время скачивания, а перед подключением к ТВ выключите.')
+}
+
 function Get-AdbPath {
   if ($AdbPath) { return $AdbPath }
   $cmd = Get-Command adb -ErrorAction SilentlyContinue
@@ -83,7 +116,7 @@ function Get-AdbPath {
   Say '  Скачиваю ADB (Google platform-tools, ~7 МБ)…'
   New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
   $zip = Join-Path $toolsDir 'platform-tools.zip'
-  Invoke-WebRequest -UseBasicParsing -Uri 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile $zip
+  Save-PlatformTools $zip
   Expand-Archive -Path $zip -DestinationPath $toolsDir -Force
   Remove-Item $zip -Force
   if (-not (Test-Path $local)) { throw 'Не удалось распаковать ADB.' }
