@@ -71,6 +71,10 @@ switch ($argv[0]) {
       return
     }
     if ($cmd -match '^rm ') { return }
+    # Журнал ЧистогоТВ на самом телевизоре
+    if ($cmd -match '^mkdir -p \S+ && echo (\S+) >> \S+$') { $state.tv_journal = "$($state.tv_journal)$($Matches[1])`n"; Save; return }
+    if ($cmd -match '^cat \S+disabled-by-chistytv\.txt 2>/dev/null$') { "$($state.tv_journal)".Trim(); return }
+    if ($cmd -match '^mv \S+disabled-by-chistytv\.txt \S+ 2>/dev/null$') { $state.tv_journal = ''; Save; return }
     "unknown shell command: $cmd"; return
   }
   default { "fake adb: unknown $($argv -join ' ')" }

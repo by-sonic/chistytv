@@ -17,7 +17,7 @@ function New-Tv([string[]]$Installed, [hashtable]$Extra = @{}) {
       'ro.build.version.release' = '11'; 'ro.build.version.sdk' = '30'; 'ro.product.cpu.abi' = 'armeabi-v7a'
       'ro.product.cpu.abilist' = 'armeabi-v7a,armeabi'
     }
-    installed = $Installed; disabled = @(); started = @(); dns_mode = 'opportunistic'; dns_spec = 'null'; refuse = $false; home = ''; home_works = $false; wifi_owner = ''
+    installed = $Installed; disabled = @(); started = @(); dns_mode = 'opportunistic'; dns_spec = 'null'; refuse = $false; home = ''; home_works = $false; wifi_owner = ''; tv_journal = ''
   }
   foreach ($k in $Extra.Keys) { $state[$k] = $Extra[$k] }
   $path = Join-Path $tmp ("tv-" + [guid]::NewGuid().ToString('N').Substring(0, 6) + '.json')
@@ -64,10 +64,20 @@ $log = Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chist
 Check 'журнал отката записан' ($log -and ((Get-Content $log.FullName) -contains $safe[0]))
 Check 'бэкап сделан' ((Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'packages.txt').Count -ge 1)
 
+Check 'журнал продублирован на телевизор' ((State $tv).tv_journal -match [regex]::Escape($safe[0]))
+
 # 2. Откат включает всё обратно
 $out = Run @('-Action', 'restore', '-Yes')
 $s = State $tv
 Check 'откат включил пакеты' (@($s.disabled).Count -eq 0) $out
+
+# 2б. Откат по журналу на телевизоре: компьютер другой (или чистили с телефона), своего журнала нет
+$tv = New-Tv $installed
+Run @('-Action', 'clean', '-Yes') | Out-Null
+Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chistytv.txt' | Remove-Item -Force
+$out = Run @('-Action', 'restore', '-Yes')
+$s = State $tv
+Check 'откат по журналу на телевизоре' (@($s.disabled).Count -eq 0) $out
 
 # 3. Прошивка, запрещающая отключение — понятное сообщение
 $tv = New-Tv $installed @{ refuse = $true }

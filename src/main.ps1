@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.1.4'
+$Script:Version = '0.2.0'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -348,10 +348,23 @@ function New-Backup {
 
 function Get-RestoreLog { return (Join-Path $WorkDir "$(Get-TvKey)\disabled-by-chistytv.txt") }
 
+# Журнал дублируется на сам телевизор: откатить можно и с другого компьютера, и из приложения ЧистыйТВ на телефоне.
+$Script:TvJournal = '/data/local/tmp/chistytv/disabled-by-chistytv.txt'
+$Script:SafePkg = '^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$'
+
 function Add-RestoreLog([string]$Pkg) {
   $log = Get-RestoreLog
   New-Item -ItemType Directory -Force -Path (Split-Path $log) | Out-Null
   Add-Content -Path $log -Value $Pkg -Encoding UTF8
+  if ($Pkg -cmatch $Script:SafePkg) { Sh "mkdir -p /data/local/tmp/chistytv && echo $Pkg >> $($Script:TvJournal)" | Out-Null }
+}
+
+function Get-RestorePackages {
+  $local = @()
+  $log = Get-RestoreLog
+  if (Test-Path $log) { $local = @(Get-Content $log -Encoding UTF8) }
+  $remote = @((Sh "cat $($Script:TvJournal) 2>/dev/null") -split "`n")
+  return @(($local + $remote) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -cmatch $Script:SafePkg } | Select-Object -Unique)
 }
 
 function Disable-Packages($Entries) {
@@ -446,14 +459,16 @@ function Show-HomeHint {
 function Invoke-Restore {
   Title 'Вернуть как было'
   $log = Get-RestoreLog
-  if (-not (Test-Path $log)) { Warn "Для этого телевизора нет журнала ЧистогоТВ ($log)."; return }
-  $pkgs = Get-Content $log -Encoding UTF8 | Where-Object { $_ } | Select-Object -Unique
+  $pkgs = @(Get-RestorePackages)
+  if (-not $pkgs.Count) { Warn "Для этого телевизора нет журнала ЧистогоТВ — ни здесь ($log), ни на самом ТВ."; return }
   foreach ($pkg in $pkgs) {
     $out = Sh "pm enable $pkg"
     if ($out -notmatch 'enabled') { $out = Sh "cmd package install-existing $pkg" }
     if ($out -match 'enabled|installed') { Ok $pkg } else { Warn "$pkg`: $out" }
   }
-  Move-Item $log "$log.restored-$(Get-Date -Format 'yyyyMMdd-HHmmss')" -Force
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  if (Test-Path $log) { Move-Item $log "$log.restored-$stamp" -Force }
+  Sh "mv $($Script:TvJournal) $($Script:TvJournal).restored-$stamp 2>/dev/null" | Out-Null
   Ok 'Все отключённые ЧистымТВ приложения включены. Перезагрузите телевизор.'
 }
 
@@ -495,6 +510,7 @@ function Install-Apk([string]$File, [string]$Label) {
   if ($out -match 'Success') { Ok "$Label установлен"; return $true }
   Fail "$Label не установился: $out"
   if ($out -match 'VERIFICATION_FAILURE') { Say '    Прошивка запрещает установку сторонних приложений по ADB.' 'DarkGray' }
+  if ($out -match 'NO_MATCHING_ABIS') { Say "    У $Label нет сборки под процессор этого телевизора ($($Script:Info.AbiList))." 'DarkGray' }
   return $false
 }
 
@@ -506,9 +522,11 @@ $Script:LauncherPackage = 'com.leanbitlab.ltvL'
 
 function Get-Abi {
   # Основная сборка SmartTube для ТВ — armeabi-v7a; arm64 берём, только если 32-битных библиотек нет.
+  # На x86 «универсальные» APK не ставятся (в них нет x86-библиотек), поэтому для x86 — своя сборка.
   $list = "$($Script:Info.AbiList)"
   if ($list -match 'armeabi-v7a') { return 'armeabi-v7a' }
   if ($list -match 'arm64-v8a') { return 'arm64-v8a' }
+  if ($list -match 'x86') { return 'x86' }
   return 'universal'
 }
 
