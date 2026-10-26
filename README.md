@@ -1,3 +1,10 @@
+<!-- SUPPORT-START -->
+<p align="center">
+  <b>💛 Поддержать проект</b> · крипта в сети <b>TRC20</b>:<br/>
+  <code>TEHHyPSeZ7t5vfVJmjtEBkqJdpfcrm1wqg</code>
+</p>
+<!-- SUPPORT-END -->
+
 <!-- ROSEVPN-BANNER-START -->
 <p align="center">
   <a href="https://t.me/rosevpnru_bot">
@@ -138,6 +145,8 @@ Tizen и webOS — не Android, ЧистыйТВ с ними не работа�
 Ваш телевизор не в списке? Пришлите отчёт — добавим.
 
 ## 🙌 Помочь проекту
+
+**Деньгами:** крипта в сети TRC20 — `TEHHyPSeZ7t5vfVJmjtEBkqJdpfcrm1wqg`. Каждый перевод — время на новые модели телевизоров.
 
 Самое ценное — **отчёты с реальных телевизоров**: модель, платформа, вывод `adb shell pm list packages`
 и что получилось. Список проверенных моделей растёт из них. Откуда взяты текущие данные —

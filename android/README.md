@@ -1,3 +1,10 @@
+<!-- SUPPORT-START -->
+<p align="center">
+  <b>💛 Поддержать проект</b> · крипта в сети <b>TRC20</b>:<br/>
+  <code>TEHHyPSeZ7t5vfVJmjtEBkqJdpfcrm1wqg</code>
+</p>
+<!-- SUPPORT-END -->
+
 # 📱 ЧистыйТВ для Android
 
 То же, что `chistytv.ps1`, только с телефона: телефон и телевизор в одной Wi-Fi сети — и всё,
