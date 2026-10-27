@@ -528,8 +528,11 @@ public class AdbConnection implements Closeable {
             }
         }
 
-        // Check if the OPEN request was rejected
-        if (stream.isClosed()) {
+        // Check if the OPEN request was rejected.
+        // ChistyTV fix: rejected means closed without OKAY. A command without output (rm -f, settings put)
+        // may send OKAY and CLSE together — the stream is already closed by the time we look, but it did run.
+        // Originally this was reported as "rejected" and the caller saw an error for a successful command.
+        if (!stream.isOpenAcknowledged()) {
             mOpenedStreams.remove(localId);
             throw new ConnectException("Stream open actively rejected by remote peer.");
         }

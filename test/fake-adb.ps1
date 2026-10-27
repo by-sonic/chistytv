@@ -37,6 +37,18 @@ switch ($argv[0]) {
       Save
       "Package $p new state: enabled"; return
     }
+    # Память: free_mb свободно, cache_mb освобождает pm trim-caches, need_mb нужно для установки
+    if ($cmd -eq "stat -f -c '%a %S' /data") { if ($null -ne $state.free_mb) { "$([long]$state.free_mb * 256) 4096" }; return }
+    if ($cmd -match '^pm trim-caches ') {
+      $state | Add-Member -Force free_mb ([long]$state.free_mb + [long]$state.cache_mb)
+      $state | Add-Member -Force cache_mb 0
+      $state | Add-Member -Force trimmed $true
+      Save; return
+    }
+    if ($cmd -match '^pm install -r ' -and $null -ne $state.need_mb -and [long]$state.free_mb -lt [long]$state.need_mb) {
+      "`nException occurred while executing:`nandroid.os.ParcelableException: java.io.IOException: Requested internal only, but not enough space`n`tat android.util.ExceptionUtils.wrap(ExceptionUtils.java:34)`n`tat com.android.server.pm.PackageInstallerService.createSession(PackageInstallerService.java:536)"
+      return
+    }
     if ($cmd -match '^pm install -r ') {
       $state.installed = @($state.installed) + 'com.installed.by.test' | Select-Object -Unique
       Save

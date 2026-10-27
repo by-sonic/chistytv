@@ -119,22 +119,62 @@ class TvSession(
 
   // ─── Установка приложений ───────────────────────────────────────────
 
-  fun installApk(file: File, label: String): Boolean {
-    // push + pm install: на Android 14 «adb install» может зависнуть, ожидая подтверждения на экране
-    val remote = "/data/local/tmp/chistytv.apk"
+  /** Свободно во внутренней памяти (/data), МБ. stat -f есть в toybox с Android 6; нет ответа — null */
+  fun freeMb(): Long? {
+    val m = Regex("^(\\d+) (\\d+)$").find(adb.shell("stat -f -c '%a %S' /data")) ?: return null
+    return m.groupValues[1].toLong() * m.groupValues[2].toLong() / (1024 * 1024)
+  }
+
+  /** pm trim-caches: система освобождает место за счёт кэша приложений. Данные и настройки не трогаются. */
+  private fun clearTvCache() {
+    val before = freeMb()
+    adb.shell("pm trim-caches 999G")
+    val after = freeMb()
+    if (before != null && after != null) out.info("Кэш приложений очищен: свободно $after МБ (было $before МБ).")
+  }
+
+  /** Передать и поставить; ошибка передачи — строка с «push: » */
+  private fun sendApk(file: File, remote: String): String {
     try {
       adb.push(file, remote)
     } catch (e: Exception) {
-      out.fail("Не удалось передать $label: ${e.message}")
-      return false
+      adb.shell("rm -f $remote")
+      return "push: ${e.message}"
     }
     val r = adb.shell("pm install -r $remote")
     adb.shell("rm -f $remote")
+    return r
+  }
+
+  fun installApk(file: File, label: String): Boolean {
+    // push + pm install: на Android 14 «adb install» может зависнуть, ожидая подтверждения на экране
+    val remote = "/data/local/tmp/chistytv.apk"
+    // Место с запасом: APK лежит во временной папке, при установке копируется и распаковывается
+    val needMb = (file.length() * 3 + 1024 * 1024 - 1) / (1024 * 1024) + 50
+    var trimmed = false
+    val free = freeMb()
+    if (free != null && free < needMb) {
+      out.warn("На телевизоре мало памяти: свободно $free МБ, для $label нужно около $needMb МБ. Очищаю кэш приложений…")
+      clearTvCache()
+      trimmed = true
+    }
+    var r = sendApk(file, remote)
+    if (NO_SPACE.containsMatchIn(r) && !trimmed) {
+      out.warn("На телевизоре не хватило памяти — очищаю кэш приложений и пробую ещё раз…")
+      clearTvCache()
+      r = sendApk(file, remote)
+    }
     if (r.contains("Success")) {
       out.ok("$label установлен")
       return true
     }
-    out.fail("$label не установился: $r")
+    if (r.startsWith("push: ")) out.fail("Не удалось передать $label: ${shortError(r.removePrefix("push: "))}")
+    else out.fail("$label не установился: ${shortError(r)}")
+    if (NO_SPACE.containsMatchIn(r)) {
+      val now = freeMb()?.let { "свободно $it МБ, " }.orEmpty()
+      out.hint("Во внутренней памяти телевизора не хватает места даже после очистки кэша (${now}нужно около $needMb МБ).")
+      out.hint("Удалите ненужные приложения: Настройки → Приложения (обычно больше всего весят игры и онлайн-кинотеатры), и попробуйте снова.")
+    }
     if (r.contains("VERIFICATION_FAILURE")) out.hint("Прошивка запрещает установку сторонних приложений по ADB.")
     if (r.contains("NO_MATCHING_ABIS")) out.hint("У $label нет сборки под процессор этого телевизора (${info.abiList}).")
     return false
@@ -345,6 +385,17 @@ class TvSession(
 
   companion object {
     private val DISABLED = Regex("disabled-user|new state: disabled", RegexOption.IGNORE_CASE)
+    private val NO_SPACE = Regex("INSUFFICIENT_STORAGE|not enough space|No space left", RegexOption.IGNORE_CASE)
+
+    /** При исключении pm печатает весь стектрейс — оставляем суть: «Failure [...]» или текст исключения (как Get-ShortError у скрипта) */
+    fun shortError(out: String): String {
+      Regex("Failure \\[[^\\]]+\\]").find(out)?.let { return it.value }
+      val lines = out.lines().map { it.trim() }
+        .filter { it.isNotEmpty() && !Regex("^(at |\\.\\.\\. \\d+ more|Caused by)").containsMatchIn(it) }
+      val reason = lines.firstNotNullOfOrNull { Regex("Exception: (?!.*Exception: )(.+)$").find(it)?.groupValues?.get(1) }
+      val text = reason ?: lines.firstOrNull().orEmpty()
+      return if (text.length > 300) text.take(300) + "…" else text
+    }
 
     /** Пакеты SmartTube: новые (после смены ключа в конце 2025) и старые */
     val SMARTTUBE_PACKAGES = listOf("org.smarttube.stable", "org.smarttube.beta", "app.smarttube.fdroid", "com.teamsmart.videomanager.tv", "com.liskovsoft.smarttubetv.beta")

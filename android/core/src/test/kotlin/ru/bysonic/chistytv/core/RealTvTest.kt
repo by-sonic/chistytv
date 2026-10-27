@@ -49,6 +49,31 @@ class RealTvTest {
   }
 
   @Test
+  fun `нет памяти — кэш чистится, ошибка понятная`() {
+    val s = session()
+    // Забиваем /data файлами — только на эмуляторе, живой телевизор так не мучаем
+    assumeTrue("только на эмуляторе", s.adb.shell("getprop ro.kernel.qemu") == "1")
+    val free = s.freeMb()
+    assertTrue("stat -f отвечает: $free", free != null && free > 0)
+    // Нужен настоящий APK: пустышку Android отвергает раньше, чем проверит место
+    val apk = File(repo, "android/app/build/outputs/apk/release/app-release.apk")
+    assumeTrue("нет собранного app-release.apk", apk.exists())
+    val fill = "/data/local/tmp/chistytv-fill"
+    try {
+      s.adb.shell(
+        "mkdir -p $fill; i=0; while [ \$(stat -f -c %a /data) -gt 270000 ]; do fallocate -l 1000000000 $fill/\$i || break; i=\$((i+1)); done; " +
+          "while [ \$(stat -f -c %a /data) -gt 5000 ]; do fallocate -l 10000000 $fill/\$i || break; i=\$((i+1)); done",
+      )
+      assertTrue(!s.installApk(apk, "Тест"))
+      assertTrue(text, text.contains("мало памяти") && text.contains("Удалите ненужные приложения"))
+      assertTrue(text, text.contains("Тест не установился: Requested internal only, but not enough space") || text.contains("Не удалось передать"))
+      assertTrue(text, !text.contains("ExceptionUtils"))
+    } finally {
+      s.adb.shell("rm -rf $fill")
+    }
+  }
+
+  @Test
   fun `чистка по настоящей базе и откат`() {
     val s = session()
     val recommended = s.plan().filter { it.action == "disable" }

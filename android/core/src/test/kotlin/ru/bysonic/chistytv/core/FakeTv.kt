@@ -29,6 +29,10 @@ class FakeTv(
   var dnsSpec = "null"
   /** Файлы в /data/local/tmp — для журнала ЧистогоТВ на самом телевизоре */
   val files = mutableMapOf<String, String>()
+  var freeMb: Long? = null
+  var cacheMb: Long = 0
+  var needMb: Long? = null
+  var trimmed = false
 
   override fun push(source: File, remotePath: String) {
     pushed += remotePath
@@ -52,6 +56,18 @@ class FakeTv(
       val p = it.groupValues[1]
       disabled.remove(p)
       return "Package $p new state: enabled"
+    }
+    // Память: freeMb свободно, cacheMb освобождает pm trim-caches, needMb нужно для установки
+    if (c == "stat -f -c '%a %S' /data") return freeMb?.let { "${it * 256} 4096" }.orEmpty()
+    if (c.startsWith("pm trim-caches ")) {
+      freeMb = (freeMb ?: 0) + cacheMb
+      cacheMb = 0
+      trimmed = true
+      return ""
+    }
+    if (c.startsWith("pm install -r ") && needMb != null && (freeMb ?: 0) < needMb!!) {
+      return "\nException occurred while executing:\nandroid.os.ParcelableException: java.io.IOException: Requested internal only, but not enough space\n" +
+        "\tat android.util.ExceptionUtils.wrap(ExceptionUtils.java:34)\n\tat com.android.server.pm.PackageInstallerService.createSession(PackageInstallerService.java:536)"
     }
     if (c.startsWith("pm install -r ")) {
       if ("com.installed.by.test" !in installed) installed += "com.installed.by.test"

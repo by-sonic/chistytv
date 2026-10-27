@@ -228,6 +228,56 @@ class TvSessionTest {
     assertTrue(r.text.contains("Happ установлен"))
   }
 
+  // 12б из run-tests.ps1: мало памяти на ТВ
+  private fun apk1Mb(r: Run) = File(r.root, "test.apk").apply { writeBytes(ByteArray(1024 * 1024)) } // нужно около 3×1 + 50 = 53 МБ
+
+  @Test
+  fun `мало памяти заранее — кэш очищен и установлено`() {
+    val tv = FakeTv(installed).apply { freeMb = 40; cacheMb = 500; needMb = 100 }
+    val r = run(tv)
+    assertTrue(r.session.installApk(apk1Mb(r), "SmartTube"))
+    assertTrue(tv.trimmed)
+    assertTrue(r.text, r.text.contains("мало памяти") && r.text.contains("SmartTube установлен"))
+  }
+
+  @Test
+  fun `не хватило при установке — кэш очищен, вторая попытка удалась`() {
+    val tv = FakeTv(installed).apply { freeMb = 60; cacheMb = 500; needMb = 100 }
+    val r = run(tv)
+    assertTrue(r.session.installApk(apk1Mb(r), "SmartTube"))
+    assertTrue(tv.trimmed)
+    assertTrue(r.text, r.text.contains("пробую ещё раз") && r.text.contains("SmartTube установлен"))
+  }
+
+  @Test
+  fun `места нет совсем — подсказка, без стектрейса`() {
+    val tv = FakeTv(installed).apply { freeMb = 40; cacheMb = 5; needMb = 100 }
+    val r = run(tv)
+    assertFalse(r.session.installApk(apk1Mb(r), "SmartTube"))
+    assertTrue(r.text, r.text.contains("not enough space") && r.text.contains("Удалите ненужные приложения") && r.text.contains("свободно 45 МБ"))
+    assertFalse(r.text, r.text.contains("ExceptionUtils"))
+    assertEquals("кэш уже очищен заранее — повторно не ставим", 1, tv.commands.count { it.startsWith("pm install") })
+  }
+
+  @Test
+  fun `ошибка pm — коротко, без стектрейса`() {
+    assertEquals("Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]", TvSession.shortError("Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]"))
+    // Как печатает Android 9 на эмуляторе: пустая строка, заголовок, исключение и стектрейс
+    val pm9 = "\nException occurred while executing:\nandroid.os.ParcelableException: java.io.IOException: Requested internal only, but not enough space\n" +
+      "\tat android.util.ExceptionUtils.wrap(ExceptionUtils.java:34)\nCaused by: java.io.IOException: Requested internal only, but not enough space"
+    assertEquals("Requested internal only, but not enough space", TvSession.shortError(pm9))
+    assertEquals("Error: что-то ещё", TvSession.shortError("Error: что-то ещё\n\tat x.y(Z.java:1)"))
+  }
+
+  @Test
+  fun `обычная установка не трогает кэш`() {
+    val tv = FakeTv(installed)
+    val r = run(tv)
+    assertTrue(r.session.installApk(apk1Mb(r), "SmartTube"))
+    assertFalse(tv.trimmed)
+    assertFalse(r.text.contains("Кэш"))
+  }
+
   @Test
   fun `LTvLauncher — сборка под процессор телевизора`() {
     val net = StubNet(

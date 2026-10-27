@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.0'
+$Script:Version = '0.2.1'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -132,7 +132,8 @@ function Invoke-Adb {
   $prev = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   try {
-    $out = & $Script:Adb @all 2>&1 | ForEach-Object { "$_" }
+    # Строки stderr приходят как ErrorRecord: пустая превращается в «System.Management.Automation.RemoteException»
+    $out = & $Script:Adb @all 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
   } finally {
     $ErrorActionPreference = $prev
   }
@@ -500,15 +501,67 @@ function Get-Apk([string]$Key, [scriptblock]$Resolve) {
   }
 }
 
+function Get-FreeMb {
+  # Свободно во внутренней памяти (/data). stat -f есть в toybox с Android 6; нет ответа — $null
+  $out = Sh "stat -f -c '%a %S' /data"
+  if ($out -match '^(\d+) (\d+)$') { return [long]([double]$Matches[1] * [double]$Matches[2] / 1MB) }
+  return $null
+}
+
+function Clear-TvCache {
+  # pm trim-caches: система освобождает место за счёт кэша приложений. Данные и настройки не трогаются.
+  $before = Get-FreeMb
+  Sh 'pm trim-caches 999G' | Out-Null
+  $after = Get-FreeMb
+  if ($null -ne $before -and $null -ne $after) { Say "    Кэш приложений очищен: свободно $after МБ (было $before МБ)." 'DarkGray' }
+}
+
+function Get-ShortError([string]$Out) {
+  # При исключении pm печатает весь стектрейс — оставляем суть: «Failure [...]» или текст исключения
+  if ($Out -match 'Failure \[[^\]]+\]') { return $Matches[0] }
+  $lines = @($Out -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notmatch '^(at |\.\.\. \d+ more|Caused by)' })
+  $reason = $lines | ForEach-Object { if ($_ -match 'Exception: (?!.*Exception: )(.+)$') { $Matches[1] } } | Select-Object -First 1
+  $text = if ($reason) { "$reason" } else { "$($lines | Select-Object -First 1)" }
+  if ($text.Length -gt 300) { $text = $text.Substring(0, 300) + '…' }
+  return $text
+}
+
+function Send-Apk([string]$File, [string]$Remote) {
+  $push = Invoke-Adb push $File $Remote
+  if ($push -notmatch 'pushed|file pushed|bytes in') { Sh "rm -f $Remote" | Out-Null; return "push: $push" }
+  $out = Sh "pm install -r $Remote"
+  Sh "rm -f $Remote" | Out-Null
+  return $out
+}
+
 function Install-Apk([string]$File, [string]$Label) {
   # push + pm install: на Android 14 «adb install» может зависнуть, ожидая подтверждения на экране.
   $remote = '/data/local/tmp/chistytv.apk'
-  $push = Invoke-Adb push $File $remote
-  if ($push -notmatch 'pushed|file pushed|bytes in') { Fail "Не удалось передать $Label`: $push"; return $false }
-  $out = Sh "pm install -r $remote"
-  Sh "rm -f $remote" | Out-Null
+  $noSpace = 'INSUFFICIENT_STORAGE|not enough space|No space left'
+  # Место с запасом: APK лежит во временной папке, при установке копируется и распаковывается
+  $needMb = [long][math]::Ceiling((Get-Item $File).Length * 3 / 1MB) + 50
+  $trimmed = $false
+  $free = Get-FreeMb
+  if ($null -ne $free -and $free -lt $needMb) {
+    Warn "На телевизоре мало памяти: свободно $free МБ, для $Label нужно около $needMb МБ. Очищаю кэш приложений…"
+    Clear-TvCache
+    $trimmed = $true
+  }
+  $out = Send-Apk $File $remote
+  if ($out -match $noSpace -and -not $trimmed) {
+    Warn 'На телевизоре не хватило памяти — очищаю кэш приложений и пробую ещё раз…'
+    Clear-TvCache
+    $out = Send-Apk $File $remote
+  }
   if ($out -match 'Success') { Ok "$Label установлен"; return $true }
-  Fail "$Label не установился: $out"
+  if ($out -like 'push: *') { Fail "Не удалось передать $Label`: $(Get-ShortError $out.Substring(6))" }
+  else { Fail "$Label не установился: $(Get-ShortError $out)" }
+  if ($out -match $noSpace) {
+    $free = Get-FreeMb
+    $now = if ($null -ne $free) { "свободно $free МБ, " } else { '' }
+    Say "    Во внутренней памяти телевизора не хватает места даже после очистки кэша ($($now)нужно около $needMb МБ)." 'DarkGray'
+    Say '    Удалите ненужные приложения: Настройки → Приложения (обычно больше всего весят игры и онлайн-кинотеатры), и запустите пункт снова.' 'DarkGray'
+  }
   if ($out -match 'VERIFICATION_FAILURE') { Say '    Прошивка запрещает установку сторонних приложений по ADB.' 'DarkGray' }
   if ($out -match 'NO_MATCHING_ABIS') { Say "    У $Label нет сборки под процессор этого телевизора ($($Script:Info.AbiList))." 'DarkGray' }
   return $false

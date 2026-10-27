@@ -146,6 +146,27 @@ $out = Run @('-Action', 'clean', '-Yes')
 Check 'нет висящих тире' ($out -notmatch ' — ?
 ') $out
 
+# 12б. Мало памяти на ТВ: чистим кэш приложений и ставим; не помогло — понятная подсказка без стектрейса
+$apk = Join-Path $tmp 'test.apk'
+[IO.File]::WriteAllBytes($apk, (New-Object byte[] 1MB))   # нужно около 3×1 + 50 = 53 МБ
+function RunInstall { & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'run-install.ps1') -Adb $fakeAdb -Apk $apk -Label 'SmartTube' *>&1 | Out-String }
+
+$tv = New-Tv $installed @{ free_mb = 40; cache_mb = 500; need_mb = 100; trimmed = $false }
+$out = RunInstall
+Check 'мало памяти заранее — кэш очищен и установлено' ((State $tv).trimmed -and $out -match 'мало памяти' -and $out -match 'SmartTube установлен') $out
+
+$tv = New-Tv $installed @{ free_mb = 60; cache_mb = 500; need_mb = 100; trimmed = $false }
+$out = RunInstall
+Check 'не хватило при установке — кэш очищен, вторая попытка удалась' ((State $tv).trimmed -and $out -match 'пробую ещё раз' -and $out -match 'SmartTube установлен') $out
+
+$tv = New-Tv $installed @{ free_mb = 40; cache_mb = 5; need_mb = 100; trimmed = $false }
+$out = RunInstall
+Check 'места нет совсем — подсказка, без стектрейса' (($out -match 'not enough space') -and ($out -match 'Удалите ненужные приложения') -and ($out -match 'свободно 45 МБ') -and ($out -notmatch 'ExceptionUtils') -and ($out -notmatch 'SmartTube установлен')) $out
+
+$tv = New-Tv $installed
+$out = RunInstall
+Check 'обычная установка не трогает кэш' ((-not (State $tv).trimmed) -and $out -match 'SmartTube установлен' -and $out -notmatch 'Кэш') $out
+
 # 13. Запуск «irm | iex»: загрузчик без BOM и только ASCII, иначе PowerShell не поймёт блок param
 $launcher = [IO.File]::ReadAllBytes($script)
 Check 'chistytv.ps1 без BOM' (-not ($launcher[0] -eq 0xEF -and $launcher[1] -eq 0xBB -and $launcher[2] -eq 0xBF))
