@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ADB по сети, поиск телевизора в Wi-Fi и скачивание приложений с GitHub -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -7,6 +8,12 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Поиск беспроводной отладки Android 11+ по mDNS -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!-- spake2-android (пара по коду) не указывает targetSdk, и сборщик по правилу для старых библиотек
+         дописывает эти разрешения сам. Приложению они не нужны: телефон и файлы оно не читает. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
 
     <!-- Ключ ADB не должен уезжать в облачные бэкапы -->
     <application

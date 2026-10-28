@@ -75,6 +75,39 @@ class TvSessionTest {
   }
 
   @Test
+  fun `2в не включилось — остаётся в журнале, без «всё включено»`() {
+    val tv = FakeTv(installed)
+    val r = run(tv)
+    r.session.cleanDefaults()
+    tv.refuseEnable += safe[0]
+    val res = r.session.restore()
+    assertEquals(listOf(safe[0]), res.failed)
+    assertFalse(r.text, r.text.contains("Все отключённые ЧистымТВ приложения включены"))
+    assertTrue(r.text, r.text.contains("Не включилось: ${safe[0]}"))
+    assertEquals("в журнале на телефоне — только невключённое", listOf(safe[0]), r.session.store.journal.readLines().filter { it.isNotBlank() })
+    assertEquals("и на телевизоре", safe[0], tv.files[TvStore.TV_JOURNAL].orEmpty().trim())
+
+    // Прошивка смилостивилась — второй откат добивает остаток
+    tv.refuseEnable.clear()
+    val again = r.session.restore()
+    assertEquals(listOf(safe[0]), again.restored)
+    assertTrue(tv.disabled.isEmpty())
+    assertTrue(r.text, r.text.contains("Все отключённые ЧистымТВ приложения включены"))
+  }
+
+  @Test
+  fun `2г пакета больше нет на ТВ — не ошибка`() {
+    val tv = FakeTv(installed)
+    val r = run(tv)
+    r.session.cleanDefaults()
+    tv.installed.remove(safe[0]) // обновление прошивки убрало пакет
+    tv.disabled.remove(safe[0])
+    val res = r.session.restore()
+    assertTrue(r.text, res.failed.isEmpty())
+    assertTrue(r.text, r.text.contains("больше нет") && r.text.contains("Все отключённые ЧистымТВ приложения включены"))
+  }
+
+  @Test
   fun `3 прошивка запрещает отключение — понятное сообщение`() {
     val tv = FakeTv(installed, refuse = true)
     val r = run(tv)
@@ -119,6 +152,67 @@ class TvSessionTest {
     assertEquals("opportunistic", tv.dnsMode)
     assertEquals("null", tv.dnsSpec)
     assertTrue("объяснили причину", r.text.contains("порт 853"))
+  }
+
+  @Test
+  fun `6б2 Android 9 — ответ из кэша DNS не обманывает проверку`() {
+    // Android 9: сеть не перепроверяется сразу, а имя, которое ТВ уже искал, находится из кэша
+    val tv = FakeTv(installed, dotBlocked = true).apply { staleValidated = true }
+    tv.props["ro.build.version.sdk"] = "28"
+    val r = run(tv)
+    assertEquals(r.text, TvSession.DnsResult.ROLLED_BACK, r.session.enableDns())
+    val after = tv.pinged.drop(1)
+    assertTrue("после смены DNS спрашиваем только свежие имена: $after", after.none { it == "connectivitycheck.gstatic.com" })
+  }
+
+  @Test
+  fun `6б3 Android 10+ — без VALIDATED не считаем, что работает`() {
+    val tv = FakeTv(installed)
+    val r = run(tv)
+    // Имена находятся, но Android говорит, что сеть не проверена — значит, интернета нет
+    val lying = object : Adb by tv {
+      override fun shell(command: String): String =
+        if (command == "dumpsys connectivity") tv.shell(command).replace("&VALIDATED", "") else tv.shell(command)
+    }
+    val s = TvSession(lying, db, r.root, ApkCache(File(r.root, "apk"), StubNet()), StubNet(), Output { r.lines += it }, sleep = {})
+    assertEquals(r.text, TvSession.DnsResult.ROLLED_BACK, s.enableDns())
+  }
+
+  @Test
+  fun `6б4 свой частный DNS — откат и «выключить» возвращают его, а не opportunistic`() {
+    val tv = FakeTv(installed, dotBlocked = true).apply { dnsMode = "hostname"; dnsSpec = "dns.google" }
+    // Свой DNS работал — 853 закрыт только для AdGuard: имитируем, что сломан именно новый
+    val r = run(tv)
+    val broken = object : Adb by tv {
+      override fun shell(command: String): String {
+        if (command.startsWith("ping") && tv.dnsSpec == "dns.google") { val was = tv.dotBlocked; tv.dotBlocked = false; val o = tv.shell(command); tv.dotBlocked = was; return o }
+        return tv.shell(command)
+      }
+    }
+    val s = TvSession(broken, db, r.root, ApkCache(File(r.root, "apk"), StubNet()), StubNet(), Output { r.lines += it }, sleep = {})
+    assertEquals(r.text, TvSession.DnsResult.ROLLED_BACK, s.enableDns())
+    assertEquals("hostname", tv.dnsMode)
+    assertEquals("dns.google", tv.dnsSpec)
+    assertTrue(r.text, r.text.contains("частный DNS dns.google"))
+
+    // Работающий AdGuard и «Выключить»: возвращается свой DNS
+    tv.dotBlocked = false
+    assertEquals(TvSession.DnsResult.ENABLED, s.enableDns())
+    assertEquals(TvSession.DnsState("hostname", "dns.google"), s.store.dnsBefore())
+    s.disableDns()
+    assertEquals("hostname", tv.dnsMode)
+    assertEquals("dns.google", tv.dnsSpec)
+    assertEquals("запись о прежнем DNS убрана", null, s.store.dnsBefore())
+  }
+
+  @Test
+  fun `6б5 DNS ни разу не настраивали — «выключить» возвращает как было`() {
+    val tv = FakeTv(installed).apply { dnsMode = "null"; dnsSpec = "null" }
+    val r = run(tv)
+    assertEquals(TvSession.DnsResult.ENABLED, r.session.enableDns())
+    r.session.disableDns()
+    assertEquals("null", tv.dnsMode)
+    assertEquals("null", tv.dnsSpec)
   }
 
   @Test

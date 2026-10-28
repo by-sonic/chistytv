@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.1'
+$Script:Version = '0.2.2'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -462,15 +462,34 @@ function Invoke-Restore {
   $log = Get-RestoreLog
   $pkgs = @(Get-RestorePackages)
   if (-not $pkgs.Count) { Warn "Для этого телевизора нет журнала ЧистогоТВ — ни здесь ($log), ни на самом ТВ."; return }
+  $answers = [ordered]@{}
   foreach ($pkg in $pkgs) {
     $out = Sh "pm enable $pkg"
     if ($out -notmatch 'enabled') { $out = Sh "cmd package install-existing $pkg" }
-    if ($out -match 'enabled|installed') { Ok $pkg } else { Warn "$pkg`: $out" }
+    $answers[$pkg] = $out
   }
+  # Ответ pm — не доказательство: смотрим, что на самом деле стало на телевизоре
+  $installed = @((Sh 'pm list packages') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() })
+  $disabled = @((Sh 'pm list packages -d') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() })
+  $bad = @()
+  foreach ($pkg in $answers.Keys) {
+    $out = $answers[$pkg]
+    if ($installed -contains $pkg -and $disabled -notcontains $pkg) { Ok $pkg }
+    elseif ($installed -notcontains $pkg -and $out -match "Unknown package|doesn't exist|does not exist|not installed") {
+      # Обновление прошивки убрало пакет совсем — включать нечего
+      Say "  $pkg`: такого приложения на телевизоре больше нет" 'DarkGray'
+    } else { Warn "$pkg`: $(Get-ShortError $out)"; $bad += $pkg }
+  }
+  # Журнал откладываем в сторону, а то, что не включилось, остаётся в новом журнале — чтобы повторить
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
   if (Test-Path $log) { Move-Item $log "$log.restored-$stamp" -Force }
   Sh "mv $($Script:TvJournal) $($Script:TvJournal).restored-$stamp 2>/dev/null" | Out-Null
-  Ok 'Все отключённые ЧистымТВ приложения включены. Перезагрузите телевизор.'
+  foreach ($pkg in $bad) { Add-RestoreLog $pkg }
+  if ($bad.Count) {
+    Warn "Не включилось: $($bad -join ', '). Они остались в журнале — перезагрузите телевизор и запустите «Вернуть как было» ещё раз."
+  } else {
+    Ok 'Все отключённые ЧистымТВ приложения включены. Перезагрузите телевизор.'
+  }
 }
 
 function Get-GitHubAsset([string]$Repo, [string[]]$Patterns) {
@@ -661,50 +680,112 @@ function Invoke-YouTube {
   }
 }
 
-# Работает ли на ТВ поиск адресов. Строку «PING host (ip)» ping печатает только после того, как имя нашлось,
+# Находит ли ТВ адрес по имени. Строку «PING host (ip)» ping печатает только после того, как имя нашлось,
 # поэтому проверка не зависит от того, отвечает ли сервер на ping.
-function Test-TvDns {
-  $out = "$(Sh 'ping -c 1 -W 2 connectivitycheck.gstatic.com 2>&1')"
+function Test-TvResolves([string]$Name) {
+  $out = "$(Sh "ping -c 1 -W 2 $Name 2>&1")"
   return ($out -match 'PING \S+ \(\d')
 }
+
+# Есть ли у ТВ интернет сейчас — до смены DNS
+function Test-TvDns { return (Test-TvResolves 'connectivitycheck.gstatic.com') }
+
+$Script:AdGuardDns = 'dns.adguard-dns.com'
+$Script:DnsHost = '^[A-Za-z0-9][A-Za-z0-9.-]*$'
+$Script:DnsMode = '^(off|opportunistic|hostname|null)$'
+$Script:TvDnsBefore = '/data/local/tmp/chistytv/dns-before.txt'
+# Запасные имена для проверки, если sslip.io недоступен: телевизор вряд ли искал их недавно
+$Script:FreshHosts = @('dns.google', 'one.one.one.one', 'dns.quad9.net', 'cloudflare-dns.com')
+
+# Работает ли интернет с новым DNS. Имя, которое ТВ уже искал, приходит из кэша даже при сломанном DNS
+# (так на Android 9), поэтому спрашиваем свежее: sslip.io отвечает адресом, зашитым в само имя, и такого
+# имени в кэше нет. Android 10+ после смены DNS сам перепроверяет сеть, вместе с HTTPS, — без VALIDATED интернета нет.
+function Test-NewDns([int]$Attempt) {
+  $fresh = "ct$(Get-Random -Minimum 100000 -Maximum 999999).1-1-1-1.sslip.io"
+  if (-not (Test-TvResolves $fresh) -and -not (Test-TvResolves $Script:FreshHosts[$Attempt % $Script:FreshHosts.Count])) { return $false }
+  return ($Script:Info.Sdk -lt 29 -or (Get-NetworkValidated) -ne $false)
+}
+
+# Вердикт Android по активной сети: проверена ли она и не сломан ли частный DNS; $null — не разобрали вывод
+function Get-NetworkValidated {
+  $dump = "$(Sh 'dumpsys connectivity')"
+  if ($dump -notmatch 'Active default network: (\d+)') { return $null }
+  $id = $Matches[1]
+  $line = $dump -split "`n" | Where-Object { $_.Contains("network{$id}") -and $_.Contains('Capabilities: ') } | Select-Object -First 1
+  if (-not $line -or $line -notmatch 'Capabilities: (\S+)') { return $null }
+  $caps = $Matches[1] -split '&'
+  return ($caps -contains 'VALIDATED' -and $caps -notcontains 'PRIVATE_DNS_BROKEN')
+}
+
+function Get-DnsState { return [pscustomobject]@{ Mode = "$(Sh 'settings get global private_dns_mode')".Trim(); Spec = "$(Sh 'settings get global private_dns_specifier')".Trim() } }
+
+function Get-DnsTitle($S) {
+  if ($S.Mode -eq 'hostname') { return "частный DNS $($S.Spec)" }
+  if ($S.Mode -eq 'off') { return 'частный DNS выключен' }
+  return 'автоматический режим'
+}
+
+# Вернуть настройку DNS в точности: и режим, и сервер; чего не было — удалить
+function Set-Dns($S) {
+  if ($S.Mode -in @('off', 'opportunistic', 'hostname')) { Sh "settings put global private_dns_mode $($S.Mode)" | Out-Null }
+  else { Sh 'settings delete global private_dns_mode' | Out-Null }
+  if ($S.Spec -ne 'null' -and $S.Spec -match $Script:DnsHost) { Sh "settings put global private_dns_specifier $($S.Spec)" | Out-Null }
+  else { Sh 'settings delete global private_dns_specifier' | Out-Null }
+}
+
+# Настройка DNS до ЧистогоТВ — на сам телевизор: «Выключить» вернёт её и отсюда, и из приложения
+function Save-DnsBefore($S) {
+  if ($S.Mode -notmatch $Script:DnsMode -or -not ($S.Spec -eq 'null' -or $S.Spec -match $Script:DnsHost)) { return }
+  Sh "mkdir -p /data/local/tmp/chistytv && echo '$($S.Mode) $($S.Spec)' > $($Script:TvDnsBefore)" | Out-Null
+}
+
+function Get-DnsBefore {
+  $parts = "$(Sh "cat $($Script:TvDnsBefore) 2>/dev/null")".Trim() -split ' '
+  if ($parts.Count -ne 2 -or $parts[0] -notmatch $Script:DnsMode) { return $null }
+  if ($parts[1] -ne 'null' -and $parts[1] -notmatch $Script:DnsHost) { return $null }
+  return [pscustomobject]@{ Mode = $parts[0]; Spec = $parts[1] }
+}
+
+function Test-AdGuardDns($S) { return ($S.Mode -eq 'hostname' -and $S.Spec -eq $Script:AdGuardDns) }
+
+$Script:DefaultDns = [pscustomobject]@{ Mode = 'opportunistic'; Spec = 'null' }
 
 function Invoke-Dns {
   Title 'Блокировка рекламы через DNS'
   if ($Script:Info.Sdk -lt 28) { Warn 'Нужен Android 9 и новее.'; return }
-  $mode = "$(Sh 'settings get global private_dns_mode')".Trim()
-  $spec = "$(Sh 'settings get global private_dns_specifier')".Trim()
-  if ($mode -eq 'hostname') {
-    Say "  Сейчас включён частный DNS: $spec"
+  $before = Get-DnsState
+  if (Test-AdGuardDns $before) {
+    Say "  Сейчас включён AdGuard DNS."
     if (Confirm 'Выключить?' $false) {
-      Sh 'settings put global private_dns_mode opportunistic' | Out-Null
-      Ok 'Частный DNS выключен'
+      $was = Get-DnsBefore
+      if ($was -and -not (Test-AdGuardDns $was)) { Set-Dns $was; Ok "AdGuard DNS выключен, вернул как было: $(Get-DnsTitle $was)" }
+      else { Set-Dns $Script:DefaultDns; Ok 'Частный DNS выключен' }
+      Sh "rm -f $($Script:TvDnsBefore)" | Out-Null
     }
     return
   }
   Say '  AdGuard DNS режет рекламу и трекеры в приложениях. Рекламу внутри YouTube не убирает — для неё SmartTube.' 'DarkGray'
+  if ($before.Mode -eq 'hostname') { Say "  Сейчас стоит ваш $(Get-DnsTitle $before). AdGuard заменит его, при выключении вернётся ваш." 'DarkGray' }
   if (-not (Confirm 'Включить AdGuard DNS?')) { return }
+  Save-DnsBefore $before
   $online = Test-TvDns
   if (-not $online) { Warn 'У телевизора сейчас нет интернета — проверить DNS не получится.' }
-  Sh 'settings put global private_dns_specifier dns.adguard-dns.com' | Out-Null
+  Sh "settings put global private_dns_specifier $($Script:AdGuardDns)" | Out-Null
   Sh 'settings put global private_dns_mode hostname' | Out-Null
   if (-not $online) { Ok 'Включено. Если после появления интернета ТВ напишет «нет связи» — выключите здесь же.'; return }
 
   # Частный DNS ходит по порту 853. Если его режет провайдер или роутер, ТВ остаётся без интернета —
   # проверяем и при неудаче сразу возвращаем как было.
   Say '  Проверяю, что интернет на ТВ работает с новым DNS…' 'DarkGray'
-  $ok = $false
-  foreach ($i in 1..4) {
+  foreach ($i in 0..3) {
     Start-Sleep -Seconds 2
-    if (Test-TvDns) { $ok = $true; break }
+    if (Test-NewDns $i) { Ok 'Включено, интернет работает. Отключить можно здесь же или в настройках сети ТВ.'; return }
   }
-  if ($ok) { Ok 'Включено, интернет работает. Отключить можно здесь же или в настройках сети ТВ.'; return }
 
-  if ($mode -notin @('off', 'opportunistic')) { $mode = 'opportunistic' }
-  Sh "settings put global private_dns_mode $mode" | Out-Null
-  if ($spec -and $spec -ne 'null') { Sh "settings put global private_dns_specifier $spec" | Out-Null }
-  else { Sh 'settings delete global private_dns_specifier' | Out-Null }
+  Set-Dns $before
+  Sh "rm -f $($Script:TvDnsBefore)" | Out-Null
   Warn 'С AdGuard DNS телевизор остался без интернета: провайдер или роутер не пропускают DNS-over-TLS (порт 853).'
-  Ok 'Вернул DNS как было — интернет на ТВ работает.'
+  Ok "Вернул DNS как было ($(Get-DnsTitle $before))."
   Say '  Можно прописать AdGuard DNS в роутере (94.140.14.14 и 94.140.15.15) — тогда реклама режется у всех устройств дома.' 'DarkGray'
 }
 

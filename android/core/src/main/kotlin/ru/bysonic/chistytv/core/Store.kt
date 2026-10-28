@@ -39,6 +39,23 @@ class TvStore(root: File, info: TvInfo, private val adb: Adb, private val now: (
     adb.shell("mv $TV_JOURNAL $TV_JOURNAL.restored-$s 2>/dev/null")
   }
 
+  /** Настройка DNS до ЧистогоТВ: «Выключить» вернёт её. Хранится на ТВ — тот же файл читает скрипт. */
+  fun saveDnsBefore(s: TvSession.DnsState) {
+    if (!DNS_MODE.matches(s.mode) || !(s.spec == "null" || TvSession.DNS_HOST.matches(s.spec))) return
+    adb.shell("mkdir -p $TV_DIR && echo '${s.mode} ${s.spec}' > $TV_DNS")
+  }
+
+  fun dnsBefore(): TvSession.DnsState? {
+    val parts = adb.shell("cat $TV_DNS 2>/dev/null").trim().split(' ')
+    if (parts.size != 2 || !DNS_MODE.matches(parts[0])) return null
+    if (parts[1] != "null" && !TvSession.DNS_HOST.matches(parts[1])) return null
+    return TvSession.DnsState(parts[0], parts[1])
+  }
+
+  fun clearDnsBefore() {
+    adb.shell("rm -f $TV_DNS")
+  }
+
   fun backup(info: TvInfo): File {
     val b = File(dir, stamp())
     b.mkdirs()
@@ -52,6 +69,9 @@ class TvStore(root: File, info: TvInfo, private val adb: Adb, private val now: (
   companion object {
     const val TV_DIR = "/data/local/tmp/chistytv"
     const val TV_JOURNAL = "$TV_DIR/disabled-by-chistytv.txt"
+    const val TV_DNS = "$TV_DIR/dns-before.txt"
+    /** null — настройку ни разу не меняли */
+    val DNS_MODE = Regex("^(off|opportunistic|hostname|null)$")
     val SAFE_PKG = Regex("^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+$")
   }
 }

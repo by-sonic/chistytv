@@ -29,6 +29,14 @@ class FakeTv(
   var dnsSpec = "null"
   /** Файлы в /data/local/tmp — для журнала ЧистогоТВ на самом телевизоре */
   val files = mutableMapOf<String, String>()
+  /** DNS: что ТВ уже искал (кэш), какие имена пинговали, и «Android 9 не перепроверяет сеть сразу» */
+  val dnsCache = mutableSetOf<String>()
+  val pinged = mutableListOf<String>()
+  var staleValidated = false
+  private val dnsBroken get() = dotBlocked && dnsMode == "hostname"
+
+  /** Пакеты, которые прошивка не даёт включить обратно */
+  val refuseEnable = mutableSetOf<String>()
   var freeMb: Long? = null
   var cacheMb: Long = 0
   var needMb: Long? = null
@@ -54,8 +62,16 @@ class FakeTv(
     }
     Regex("^pm enable (\\S+)$").find(c)?.let {
       val p = it.groupValues[1]
+      if (p !in installed) return "Error: Unknown package: $p"
+      if (p in refuseEnable) return "java.lang.SecurityException: Shell cannot change component state for $p"
       disabled.remove(p)
       return "Package $p new state: enabled"
+    }
+    Regex("^cmd package install-existing (\\S+)$").find(c)?.let {
+      val p = it.groupValues[1]
+      if (p !in installed) return "Failure [Package $p doesn't exist]"
+      // Как на настоящем ТВ: «установлен» отвечает, даже если пакет так и остался отключённым
+      return "Package $p installed for user: 0"
     }
     // Память: freeMb свободно, cacheMb освобождает pm trim-caches, needMb нужно для установки
     if (c == "stat -f -c '%a %S' /data") return freeMb?.let { "${it * 256} 4096" }.orEmpty()
@@ -102,10 +118,31 @@ class FakeTv(
       dnsSpec = "null"
       return ""
     }
-    if (c.startsWith("ping ")) {
-      // dotBlocked: провайдер режет порт 853 — с частным DNS имена перестают находиться
-      if (offline || (dotBlocked && dnsMode == "hostname")) return "ping: unknown host connectivitycheck.gstatic.com"
-      return "PING connectivitycheck.gstatic.com (142.250.74.35) 56(84) bytes of data.\n64 bytes from 142.250.74.35: icmp_seq=1 ttl=117 time=12 ms"
+    if (c.startsWith("settings delete global private_dns_mode")) {
+      dnsMode = "null"
+      return ""
+    }
+    Regex("^ping -c 1 -W 2 (\\S+) 2>&1$").find(c)?.let {
+      val host = it.groupValues[1]
+      pinged += host
+      // dotBlocked: провайдер режет порт 853 — с частным DNS имена перестают находиться.
+      // Но то, что ТВ уже искал, приходит из кэша — так ведёт себя настоящий Android 9
+      if (offline || (dnsBroken && host !in dnsCache)) return "ping: unknown host $host"
+      dnsCache += host
+      return "PING $host (142.250.74.35) 56(84) bytes of data.\n64 bytes from 142.250.74.35: icmp_seq=1 ttl=117 time=12 ms"
+    }
+    if (c == "dumpsys connectivity") {
+      // Android 10+: при сломанном частном DNS сеть теряет VALIDATED (Android 9 не успевает — staleValidated)
+      val caps = if (offline || (dnsBroken && !staleValidated)) "INTERNET&NOT_RESTRICTED" else "INTERNET&NOT_RESTRICTED&VALIDATED"
+      return "Active default network: 100\n  NetworkAgentInfo{network{100}  nc{[ Transports: WIFI Capabilities: $caps Unwanted: ]} }"
+    }
+    Regex("^mkdir -p \\S+ && echo '([^']*)' > (\\S+)$").find(c)?.let {
+      files[it.groupValues[2]] = it.groupValues[1] + "\n"
+      return ""
+    }
+    Regex("^rm -f (\\S+)$").find(c)?.let {
+      files.remove(it.groupValues[1])
+      return ""
     }
     if (c.startsWith("rm ")) return ""
     Regex("^mkdir -p (\\S+) && echo (\\S+) >> (\\S+)$").find(c)?.let {

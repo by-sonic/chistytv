@@ -33,9 +33,17 @@ switch ($argv[0]) {
     }
     if ($cmd -match '^pm enable (\S+)$') {
       $p = $Matches[1]
+      if ($state.installed -notcontains $p) { "Error: Unknown package: $p"; return }
+      if (@($state.refuse_enable) -contains $p) { "java.lang.SecurityException: Shell cannot change component state for $p"; return }
       $state.disabled = @($state.disabled | Where-Object { $_ -ne $p })
       Save
       "Package $p new state: enabled"; return
+    }
+    if ($cmd -match '^cmd package install-existing (\S+)$') {
+      $p = $Matches[1]
+      if ($state.installed -notcontains $p) { "Failure [Package $p doesn't exist]"; return }
+      # Как на настоящем ТВ: «установлен» отвечает, даже если пакет так и остался отключённым
+      "Package $p installed for user: 0"; return
     }
     # Память: free_mb свободно, cache_mb освобождает pm trim-caches, need_mb нужно для установки
     if ($cmd -eq "stat -f -c '%a %S' /data") { if ($null -ne $state.free_mb) { "$([long]$state.free_mb * 256) 4096" }; return }
@@ -76,12 +84,29 @@ switch ($argv[0]) {
     if ($cmd -match '^settings put global private_dns_mode (\S+)') { $state.dns_mode = $Matches[1]; Save; return }
     if ($cmd -match '^settings put global private_dns_specifier (\S+)') { $state.dns_spec = $Matches[1]; Save; return }
     if ($cmd -match '^settings delete global private_dns_specifier') { $state.dns_spec = 'null'; Save; return }
-    if ($cmd -match '^ping ') {
-      # dot_blocked: провайдер режет порт 853 — с частным DNS имена перестают находиться
-      if ($state.offline -or ($state.dot_blocked -and $state.dns_mode -eq 'hostname')) { 'ping: unknown host connectivitycheck.gstatic.com'; return }
-      "PING connectivitycheck.gstatic.com (142.250.74.35) 56(84) bytes of data.`n64 bytes from 142.250.74.35: icmp_seq=1 ttl=117 time=12 ms"
+    if ($cmd -match '^ping -c 1 -W 2 (\S+) 2>&1$') {
+      $name = $Matches[1]
+      $state | Add-Member -Force pinged (@($state.pinged) + $name)
+      # dot_blocked: провайдер режет порт 853 — с частным DNS имена перестают находиться.
+      # Но то, что ТВ уже искал, приходит из кэша — так ведёт себя настоящий Android 9
+      $broken = $state.dns_mode -eq 'hostname' -and ($state.dot_blocked -or ($state.dot_blocked_spec -and $state.dns_spec -eq $state.dot_blocked_spec))
+      if ($state.offline -or ($broken -and @($state.dns_cache) -notcontains $name)) { Save; "ping: unknown host $name"; return }
+      $state | Add-Member -Force dns_cache (@($state.dns_cache) + $name | Select-Object -Unique)
+      Save
+      "PING $name (142.250.74.35) 56(84) bytes of data.`n64 bytes from 142.250.74.35: icmp_seq=1 ttl=117 time=12 ms"
       return
     }
+    if ($cmd -eq 'dumpsys connectivity') {
+      # Android 10+: при сломанном частном DNS сеть теряет VALIDATED (Android 9 не успевает — stale_validated)
+      $broken = $state.dns_mode -eq 'hostname' -and ($state.dot_blocked -or ($state.dot_blocked_spec -and $state.dns_spec -eq $state.dot_blocked_spec))
+      $caps = if ($state.offline -or ($broken -and -not $state.stale_validated)) { 'INTERNET&NOT_RESTRICTED' } else { 'INTERNET&NOT_RESTRICTED&VALIDATED' }
+      "Active default network: 100`n  NetworkAgentInfo{network{100}  nc{[ Transports: WIFI Capabilities: $caps Unwanted: ]} }"
+      return
+    }
+    if ($cmd -match "^mkdir -p \S+ && echo '([^']*)' > \S+dns-before\.txt$") { $state | Add-Member -Force dns_before $Matches[1]; Save; return }
+    if ($cmd -match '^cat \S+dns-before\.txt 2>/dev/null$') { "$($state.dns_before)"; return }
+    if ($cmd -match '^rm -f \S+dns-before\.txt$') { $state | Add-Member -Force dns_before ''; Save; return }
+    if ($cmd -match '^settings delete global private_dns_mode') { $state.dns_mode = 'null'; Save; return }
     if ($cmd -match '^rm ') { return }
     # Журнал ЧистогоТВ на самом телевизоре
     if ($cmd -match '^mkdir -p \S+ && echo (\S+) >> \S+$') { $state.tv_journal = "$($state.tv_journal)$($Matches[1])`n"; Save; return }

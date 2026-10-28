@@ -2,6 +2,7 @@ package ru.bysonic.chistytv.core
 
 import java.io.File
 import java.util.Base64
+import kotlin.random.Random
 
 /**
  * Всё, что ЧистыйТВ делает с телевизором, — перенос src/main.ps1 один в один:
@@ -16,6 +17,7 @@ class TvSession(
   private val net: Net,
   var out: Output = Output.None,
   private val sleep: (Long) -> Unit = { Thread.sleep(it) },
+  private val random: Random = Random.Default,
 ) {
   val planner = Planner(db)
 
@@ -98,22 +100,30 @@ class TvSession(
       out.warn("Для этого телевизора нет журнала ЧистогоТВ — возвращать нечего.")
       return RestoreResult(emptyList(), emptyList(), false)
     }
+    val answers = pkgs.associateWith { p ->
+      val r = adb.shell("pm enable $p")
+      if (r.contains("enabled", ignoreCase = true)) r else adb.shell("cmd package install-existing $p")
+    }
+    // Ответ pm — не доказательство: смотрим, что на самом деле стало на телевизоре
+    val now = refresh()
     val ok = mutableListOf<String>()
     val bad = mutableListOf<String>()
-    for (p in pkgs) {
-      var r = adb.shell("pm enable $p")
-      if (!r.contains("enabled", ignoreCase = true)) r = adb.shell("cmd package install-existing $p")
-      if (Regex("enabled|installed", RegexOption.IGNORE_CASE).containsMatchIn(r)) {
-        out.ok(p)
-        ok += p
-      } else {
-        out.warn("$p: $r")
-        bad += p
+    for ((p, r) in answers) {
+      when {
+        p in now.installed && p !in now.disabled -> { out.ok(p); ok += p }
+        // Обновление прошивки убрало пакет совсем — включать нечего
+        p !in now.installed && GONE.containsMatchIn(r) -> out.info("$p: такого приложения на телевизоре больше нет")
+        else -> { out.warn("$p: ${shortError(r)}"); bad += p }
       }
     }
+    // Журнал откладываем в сторону, а то, что не включилось, остаётся в новом журнале — чтобы повторить
     store.archiveJournal()
-    refresh()
-    out.ok("Все отключённые ЧистымТВ приложения включены. Перезагрузите телевизор.")
+    bad.forEach { store.record(it) }
+    if (bad.isEmpty()) {
+      out.ok("Все отключённые ЧистымТВ приложения включены. Перезагрузите телевизор.")
+    } else {
+      out.warn("Не включилось: ${bad.joinToString(", ")}. Они остались в журнале — перезагрузите телевизор и нажмите «Вернуть как было» ещё раз.")
+    }
     return RestoreResult(ok, bad, true)
   }
 
@@ -254,7 +264,15 @@ class TvSession(
   // ─── DNS ────────────────────────────────────────────────────────────
 
   data class DnsState(val mode: String, val spec: String) {
-    val enabled get() = mode == "hostname"
+    /** Включён именно AdGuard DNS (свой частный DNS пользователя — не наш, его не трогаем) */
+    val enabled get() = mode == "hostname" && spec == ADGUARD_DNS
+
+    /** Как сказать человеку, что стоит */
+    val title: String get() = when (mode) {
+      "hostname" -> "частный DNS $spec"
+      "off" -> "частный DNS выключен"
+      else -> "автоматический режим"
+    }
   }
 
   fun dnsState(): DnsState = DnsState(
@@ -262,12 +280,41 @@ class TvSession(
     adb.shell("settings get global private_dns_specifier").trim(),
   )
 
+  /** Вернуть настройку DNS в точности: и режим, и сервер; чего не было — удалить */
+  private fun putDns(s: DnsState) {
+    if (s.mode in listOf("off", "opportunistic", "hostname")) adb.shell("settings put global private_dns_mode ${s.mode}")
+    else adb.shell("settings delete global private_dns_mode")
+    if (s.spec != "null" && DNS_HOST.matches(s.spec)) adb.shell("settings put global private_dns_specifier ${s.spec}")
+    else adb.shell("settings delete global private_dns_specifier")
+  }
+
+  /** Находит ли ТВ адрес по имени. Строку «PING host (ip)» ping печатает только после того, как имя нашлось */
+  private fun tvResolves(host: String): Boolean = Regex("PING \\S+ \\(\\d", RegexOption.IGNORE_CASE)
+    .containsMatchIn(adb.shell("ping -c 1 -W 2 $host 2>&1"))
+
+  /** Есть ли у ТВ интернет сейчас — до смены DNS */
+  fun tvDnsWorks(): Boolean = tvResolves("connectivitycheck.gstatic.com")
+
   /**
-   * Работает ли на ТВ поиск адресов. Строку «PING host (ip)» ping печатает только после того,
-   * как имя нашлось, поэтому проверка не зависит от того, отвечает ли сервер на ping.
+   * Работает ли интернет с новым DNS. Имя, которое ТВ уже искал, приходит из кэша даже при сломанном DNS
+   * (так на Android 9), поэтому спрашиваем свежее: sslip.io отвечает адресом, зашитым в само имя, и такого
+   * имени в кэше нет. Недоступен sslip.io — одно из известных имён, которые ещё не проверяли.
+   * Android 10+ после смены DNS сам перепроверяет сеть, вместе с HTTPS, — без VALIDATED интернета нет.
    */
-  fun tvDnsWorks(): Boolean = Regex("PING \\S+ \\(\\d", RegexOption.IGNORE_CASE)
-    .containsMatchIn(adb.shell("ping -c 1 -W 2 connectivitycheck.gstatic.com 2>&1"))
+  private fun newDnsWorks(attempt: Int): Boolean {
+    val fresh = "ct${random.nextInt(100_000, 1_000_000)}.1-1-1-1.sslip.io"
+    if (!tvResolves(fresh) && !tvResolves(FRESH_HOSTS[attempt % FRESH_HOSTS.size])) return false
+    return info.sdk < 29 || networkValidated() != false
+  }
+
+  /** Вердикт Android по активной сети: проверена ли она и не сломан ли частный DNS; null — не разобрали вывод */
+  fun networkValidated(): Boolean? {
+    val dump = adb.shell("dumpsys connectivity")
+    val id = Regex("Active default network: (\\d+)").find(dump)?.groupValues?.get(1) ?: return null
+    val line = dump.lines().firstOrNull { "network{$id}" in it && "Capabilities: " in it } ?: return null
+    val caps = Regex("Capabilities: (\\S+)").find(line)?.groupValues?.get(1)?.split('&') ?: return null
+    return "VALIDATED" in caps && "PRIVATE_DNS_BROKEN" !in caps
+  }
 
   enum class DnsResult { TOO_OLD, ENABLED, ENABLED_UNCHECKED, ROLLED_BACK }
 
@@ -277,6 +324,8 @@ class TvSession(
       return DnsResult.TOO_OLD
     }
     val before = dnsState()
+    // Что стояло до ЧистогоТВ — на сам телевизор: «Выключить» вернёт это и с другого телефона, и скриптом
+    val wasBefore = if (before.enabled) store.dnsBefore() ?: DEFAULT_DNS else before.also { store.saveDnsBefore(it) }
     val online = tvDnsWorks()
     if (!online) out.warn("У телевизора сейчас нет интернета — проверить DNS не получится.")
     adb.shell("settings put global private_dns_specifier $ADGUARD_DNS")
@@ -290,24 +339,25 @@ class TvSession(
     out.info("Проверяю, что интернет на ТВ работает с новым DNS…")
     repeat(4) {
       sleep(2000)
-      if (tvDnsWorks()) {
+      if (newDnsWorks(it)) {
         out.ok("Включено, интернет работает. Отключить можно здесь же или в настройках сети ТВ.")
         return DnsResult.ENABLED
       }
     }
-    val mode = if (before.mode in listOf("off", "opportunistic")) before.mode else "opportunistic"
-    adb.shell("settings put global private_dns_mode $mode")
-    if (before.spec.isNotBlank() && before.spec != "null") adb.shell("settings put global private_dns_specifier ${before.spec}")
-    else adb.shell("settings delete global private_dns_specifier")
+    putDns(wasBefore)
+    store.clearDnsBefore()
     out.warn("С AdGuard DNS телевизор остался без интернета: провайдер или роутер не пропускают DNS-over-TLS (порт 853).")
-    out.ok("Вернул DNS как было — интернет на ТВ работает.")
+    out.ok("Вернул DNS как было (${wasBefore.title}).")
     out.hint("Можно прописать AdGuard DNS в роутере (94.140.14.14 и 94.140.15.15) — тогда реклама режется у всех устройств дома.")
     return DnsResult.ROLLED_BACK
   }
 
   fun disableDns() {
-    adb.shell("settings put global private_dns_mode opportunistic")
-    out.ok("Частный DNS выключен")
+    val was = store.dnsBefore()?.takeIf { !it.enabled }
+    putDns(was ?: DEFAULT_DNS)
+    store.clearDnsBefore()
+    if (was != null) out.ok("AdGuard DNS выключен, вернул как было: ${was.title}")
+    else out.ok("Частный DNS выключен")
   }
 
   // ─── Главный экран ──────────────────────────────────────────────────
@@ -385,7 +435,8 @@ class TvSession(
 
   companion object {
     private val DISABLED = Regex("disabled-user|new state: disabled", RegexOption.IGNORE_CASE)
-    private val NO_SPACE = Regex("INSUFFICIENT_STORAGE|not enough space|No space left", RegexOption.IGNORE_CASE)
+    private val GONE = Regex("Unknown package|doesn't exist|does not exist|not installed", RegexOption.IGNORE_CASE)
+    private val NO_SPACE =Regex("INSUFFICIENT_STORAGE|not enough space|No space left", RegexOption.IGNORE_CASE)
 
     /** При исключении pm печатает весь стектрейс — оставляем суть: «Failure [...]» или текст исключения (как Get-ShortError у скрипта) */
     fun shortError(out: String): String {
@@ -402,6 +453,13 @@ class TvSession(
     const val HAPP_PACKAGE = "com.happproxy"
     const val LAUNCHER_PACKAGE = "com.leanbitlab.ltvL"
     const val ADGUARD_DNS = "dns.adguard-dns.com"
+
+    /** Настройка Android по умолчанию — её ставим, если не знаем, что было до ЧистогоТВ */
+    val DEFAULT_DNS = DnsState("opportunistic", "null")
+    val DNS_HOST = Regex("^[A-Za-z0-9][A-Za-z0-9.-]*$")
+
+    /** Запасные имена для проверки DNS, если sslip.io недоступен: телевизор вряд ли искал их недавно */
+    val FRESH_HOSTS = listOf("dns.google", "one.one.one.one", "dns.quad9.net", "cloudflare-dns.com")
 
     /** Ссылка уходит в shell телевизора внутри одинарных кавычек: кавычки и пробелы недопустимы */
     fun isSubscriptionUrl(url: String): Boolean = Regex("^https?://[A-Za-z0-9\\-._~:/?#\\[\\]@!$()*+,;=%&]+$").matches(url)

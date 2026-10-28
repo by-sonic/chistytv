@@ -79,6 +79,23 @@ $out = Run @('-Action', 'restore', '-Yes')
 $s = State $tv
 Check 'откат по журналу на телевизоре' (@($s.disabled).Count -eq 0) $out
 
+# 2в. Прошивка не даёт включить пакет — он остаётся в журнале, «всё включено» не пишем
+function Set-State([string]$Path, [string]$Key, $Value) {
+  $s = State $Path
+  $s | Add-Member -Force $Key $Value
+  $s | ConvertTo-Json -Depth 5 | Set-Content $Path -Encoding UTF8
+}
+$tv = New-Tv $installed
+Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chistytv.txt' | Remove-Item -Force
+Run @('-Action', 'clean', '-Yes') | Out-Null
+Set-State $tv 'refuse_enable' @($safe[0])
+$out = Run @('-Action', 'restore', '-Yes')
+$log = Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chistytv.txt' | Select-Object -First 1
+Check 'невключённое осталось в журналах, без «всё включено»' (($out -match "Не включилось: $([regex]::Escape($safe[0]))") -and ($out -notmatch 'Все отключённые ЧистымТВ приложения включены') -and $log -and (@(Get-Content $log.FullName | Where-Object { $_ }) -join ',') -eq $safe[0] -and "$((State $tv).tv_journal)".Trim() -eq $safe[0]) $out
+Set-State $tv 'refuse_enable' @()
+$out = Run @('-Action', 'restore', '-Yes')
+Check 'второй откат добил остаток' ((@((State $tv).disabled).Count -eq 0) -and ($out -match 'Все отключённые ЧистымТВ приложения включены')) $out
+
 # 3. Прошивка, запрещающая отключение — понятное сообщение
 $tv = New-Tv $installed @{ refuse = $true }
 $out = Run @('-Action', 'clean', '-Yes')
@@ -110,6 +127,26 @@ $out = Run @('-Action', 'dns', '-Yes')
 $s = State $tv
 Check 'DNS откатился, если интернет пропал' ($s.dns_mode -eq 'opportunistic' -and $s.dns_spec -eq 'null') $out
 Check 'объяснили причину' ($out -match 'порт 853') $out
+
+# 6в. Android 9: имя, которое ТВ уже искал, находится из кэша и при сломанном DNS — проверка не должна обмануться
+$tv = New-Tv $installed @{ dot_blocked = $true; stale_validated = $true }
+$s = State $tv; $s.props.'ro.build.version.sdk' = '28'; $s | ConvertTo-Json -Depth 5 | Set-Content $tv -Encoding UTF8
+$out = Run @('-Action', 'dns', '-Yes')
+$s = State $tv
+Check 'Android 9: кэш DNS не обманул проверку' (($s.dns_mode -eq 'opportunistic') -and (@($s.pinged | Select-Object -Skip 1) -notcontains 'connectivitycheck.gstatic.com')) $out
+
+# 6г. Свой частный DNS: откат возвращает его, а не opportunistic
+$tv = New-Tv $installed @{ dns_mode = 'hostname'; dns_spec = 'dns.google'; dot_blocked_spec = 'dns.adguard-dns.com' }
+$out = Run @('-Action', 'dns', '-Yes')
+$s = State $tv
+Check 'откат вернул свой частный DNS' ($s.dns_mode -eq 'hostname' -and $s.dns_spec -eq 'dns.google' -and $out -match 'частный DNS dns\.google') $out
+
+# 6д. «Выключить» тоже возвращает свой DNS, а не opportunistic
+$tv = New-Tv $installed @{ dns_mode = 'hostname'; dns_spec = 'dns.google' }
+Run @('-Action', 'dns', '-Yes') | Out-Null
+$out = RunWithInput "y`n" @('-Action', 'dns')
+$s = State $tv
+Check '«Выключить» вернул свой частный DNS' ($s.dns_mode -eq 'hostname' -and $s.dns_spec -eq 'dns.google' -and -not $s.dns_before) $out
 
 # 7. Главный экран: прошивка слушается set-home-activity
 $tv = New-Tv ($installed + @('com.leanbitlab.ltvL')) @{ home_works = $true }
