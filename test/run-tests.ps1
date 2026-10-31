@@ -204,6 +204,34 @@ $tv = New-Tv $installed
 $out = RunInstall
 Check 'обычная установка не трогает кэш' ((-not (State $tv).trimmed) -and $out -match 'SmartTube установлен' -and $out -notmatch 'Кэш') $out
 
+# 12в. Подпись издателя: читаем сертификат из блока подписи APK
+function New-SignedApk([string]$Path, [byte[]]$Cert) {
+  $u32 = { param($v) [BitConverter]::GetBytes([uint32]$v) }
+  $u64 = { param($v) [BitConverter]::GetBytes([uint64]$v) }
+  $certs = (& $u32 $Cert.Length) + $Cert
+  $signed = (& $u32 0) + (& $u32 $certs.Length) + $certs
+  $signer = (& $u32 $signed.Length) + $signed
+  $seq = (& $u32 $signer.Length) + $signer
+  $value = (& $u32 $seq.Length) + $seq
+  $pair = (& $u64 (4 + $value.Length)) + (& $u32 0x7109871a) + $value
+  $size = $pair.Length + 24
+  $block = (& $u64 $size) + $pair + (& $u64 $size) + [Text.Encoding]::ASCII.GetBytes('APK Sig Block 42')
+  $eocd = [byte[]](0x50, 0x4b, 5, 6) + (New-Object byte[] 12) + (& $u32 $block.Length) + (New-Object byte[] 2)
+  [IO.File]::WriteAllBytes($Path, [byte[]]($block + $eocd))
+}
+$ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $root 'src\main.ps1'), [ref]$null, [ref]$null)
+. ([scriptblock]::Create(($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -eq 'Get-ApkCertHashes' }, $false) | Select-Object -First 1).Extent.Text))
+$cert = [Text.Encoding]::ASCII.GetBytes('test certificate')
+$signed = Join-Path $tmp 'signed.apk'
+New-SignedApk $signed $cert
+$want = ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($cert)) -replace '-', '').ToLower()
+Check 'сертификат читается из блока подписи' ((Get-ApkCertHashes $signed) -contains $want)
+Check 'файл без подписи не проходит' (@(Get-ApkCertHashes $apk).Count -eq 0)
+
+# 12г. База не может обойти защиту: даже с override_protect защищённый пакет не попадает в план
+$src = [IO.File]::ReadAllText((Join-Path $root 'src\main.ps1'), [Text.Encoding]::UTF8)
+Check 'в скрипте нет обхода защиты из базы' ($src -notmatch 'override_protect')
+
 # 13. Запуск «irm | iex»: загрузчик без BOM и только ASCII, иначе PowerShell не поймёт блок param
 $launcher = [IO.File]::ReadAllBytes($script)
 Check 'chistytv.ps1 без BOM' (-not ($launcher[0] -eq 0xEF -and $launcher[1] -eq 0xBB -and $launcher[2] -eq 0xBF))

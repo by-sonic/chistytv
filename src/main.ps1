@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.2'
+$Script:Version = '0.2.3'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -320,7 +320,7 @@ function Get-Plan {
     if ($platformIds -notcontains $e.platform) { continue }
     if ($e.action -eq 'keep') { continue }
     if ($Script:Info.Disabled -contains $e.id) { continue }
-    if ((Test-Protected $e.id) -and -not $e.override_protect) { continue }
+    if (Test-Protected $e.id) { continue }
     $plan += $e
   }
   return $plan
@@ -501,7 +501,69 @@ function Get-GitHubAsset([string]$Repo, [string[]]$Patterns) {
   throw "В последнем релизе $Repo нет подходящего файла."
 }
 
+# SHA-256 сертификатов издателей. Подпись самого APK проверяет Android при установке: подделка с чужим
+# сертификатом не пройдёт здесь, а с подставленным нашим — на телевизоре.
+$Script:ApkPins = @{
+  smarttube   = '109735aa24fe85e2e1623ebb3b1ecc4bf4263f4c6374e4411d646bfa2eda482a'
+  happ        = '397e98abed03c5f263ffaf4e8a1043b2a59f538b99e75cf152fa05a7e8007d8d'
+  ltvlauncher = 'df819e5940a514f3d2d5d19d852c18e4cbe2d1d636cb92011b8c101dac72aa9a'
+}
+
+# Сертификаты из блока подписи APK (схемы v2 и v3)
+function Get-ApkCertHashes([string]$File) {
+  $hashes = @()
+  try {
+    $b = [IO.File]::ReadAllBytes($File)
+    $eocd = -1
+    for ($i = $b.Length - 22; $i -ge [Math]::Max(0, $b.Length - 65557); $i--) {
+      if ([BitConverter]::ToUInt32($b, $i) -eq 0x06054b50) { $eocd = $i; break }
+    }
+    if ($eocd -lt 0) { return @() }
+    $cd = [long][BitConverter]::ToUInt32($b, $eocd + 16)
+    if ([Text.Encoding]::ASCII.GetString($b, $cd - 16, 16) -ne 'APK Sig Block 42') { return @() }
+    $size = [long][BitConverter]::ToUInt64($b, $cd - 24)
+    $pos = $cd - $size - 8 + 8
+    $sha = [Security.Cryptography.SHA256]::Create()
+    while ($pos -lt $cd - 24) {
+      $len = [long][BitConverter]::ToUInt64($b, $pos)
+      $id = [BitConverter]::ToUInt32($b, $pos + 8)
+      if ($id -eq 0x7109871a -or $id -eq 0xf05368c0) {
+        $v = $pos + 12
+        $seqEnd = $v + 4 + [long][BitConverter]::ToUInt32($b, $v)
+        $s = $v + 4
+        while ($s -lt $seqEnd) {
+          $signer = [long][BitConverter]::ToUInt32($b, $s)
+          $sd = $s + 8
+          $c = $sd + 4 + [long][BitConverter]::ToUInt32($b, $sd)
+          $ce = $c + 4
+          $certsEnd = $ce + [long][BitConverter]::ToUInt32($b, $c)
+          while ($ce -lt $certsEnd) {
+            $n = [int][BitConverter]::ToUInt32($b, $ce)
+            $hashes += ([BitConverter]::ToString($sha.ComputeHash($b, $ce + 4, $n)) -replace '-', '').ToLower()
+            $ce += 4 + $n
+          }
+          $s += 4 + $signer
+        }
+      }
+      $pos += 8 + $len
+    }
+  } catch { return @() }
+  return @($hashes)
+}
+
+# Подпись проверяем у любого файла, скачанного и сохранённого: перед установкой, каждый раз
 function Get-Apk([string]$Key, [scriptblock]$Resolve) {
+  $file = Get-ApkFile $Key $Resolve
+  $pin = $Script:ApkPins[$Key]
+  if ($pin -and (Get-ApkCertHashes $file) -notcontains $pin) {
+    Remove-Item $file -Force
+    Fail "$(Split-Path $file -Leaf): подпись не совпадает с подписью издателя. Файл удалён и не установлен. Если издатель сменил ключ, обновите ЧистыйТВ."
+    return $null
+  }
+  return $file
+}
+
+function Get-ApkFile([string]$Key, [scriptblock]$Resolve) {
   $cache = Join-Path $WorkDir 'apk'
   New-Item -ItemType Directory -Force -Path $cache | Out-Null
   $cached = Get-ChildItem $cache -Filter "$Key*.apk" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -554,6 +616,7 @@ function Send-Apk([string]$File, [string]$Remote) {
 }
 
 function Install-Apk([string]$File, [string]$Label) {
+  if (-not $File) { return $false }
   # push + pm install: на Android 14 «adb install» может зависнуть, ожидая подтверждения на экране.
   $remote = '/data/local/tmp/chistytv.apk'
   $noSpace = 'INSUFFICIENT_STORAGE|not enough space|No space left'

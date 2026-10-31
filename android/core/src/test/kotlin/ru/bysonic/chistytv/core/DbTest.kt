@@ -31,7 +31,7 @@ class DbTest {
 
   @Test
   fun `ничего из отключаемого не попадает под защиту`() {
-    val clash = db.packages.filter { it.action != "keep" && !it.overrideProtect && Protect.isProtected(it.id) }
+    val clash = db.packages.filter { it.action != "keep" && Protect.isProtected(it.id) }
     assertTrue("скрипт и приложение их не тронут, а база обещает: ${clash.map { it.id }}", clash.isEmpty())
   }
 

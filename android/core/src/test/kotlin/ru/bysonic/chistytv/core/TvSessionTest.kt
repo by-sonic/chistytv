@@ -27,7 +27,7 @@ class TvSessionTest {
   private fun run(tv: FakeTv, net: Net = StubNet()): Run {
     val lines = mutableListOf<Line>()
     val root = Files.createTempDirectory("chistytv-test").toFile()
-    val s = TvSession(tv, db, root, ApkCache(File(root, "apk"), net), net, Output { lines += it }, sleep = {})
+    val s = TvSession(tv, db, root, ApkCache(File(root, "apk"), net, emptyMap()), net, Output { lines += it }, sleep = {})
     return Run(s, lines, root)
   }
 

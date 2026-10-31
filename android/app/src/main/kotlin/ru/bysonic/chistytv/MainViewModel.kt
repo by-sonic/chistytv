@@ -148,7 +148,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
   // ─── Подключение ────────────────────────────────────────────────────
 
-  private val keys by lazy { AdbKeys(File(ctx.filesDir, "adb")) }
+  private val keysDir get() = File(ctx.filesDir, "adb")
+  private var loadedKeys: AdbKeys? = null
+  private val keys: AdbKeys get() = loadedKeys ?: AdbKeys(keysDir).also { loadedKeys = it }
+
+  /** Новый ключ: телевизоры, которым разрешён старый, снова спросят «Разрешить отладку?» */
+  fun resetAdbKey() {
+    loadedKeys = null
+    AdbKeys.reset(keysDir)
+  }
   private var connection: TvConnection? = null
   var session by mutableStateOf<TvSession?>(null)
     private set

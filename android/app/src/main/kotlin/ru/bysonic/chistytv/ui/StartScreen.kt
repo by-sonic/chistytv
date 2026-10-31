@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -173,6 +174,24 @@ fun StartScreen(vm: MainViewModel) {
         }
       }
     }
+
+    Spacer(Modifier.height(12.dp))
+    var keyReset by remember { mutableStateOf(0) }
+    Text(
+      when (keyReset) {
+        0 -> "Сбросить ключ подключения"
+        1 -> "Точно сбросить? Телевизоры снова спросят «Разрешить отладку?»"
+        else -> "Ключ сброшен. Старый отзовите на ТВ: «Для разработчиков» → «Отозвать авторизации отладки»."
+      },
+      style = MaterialTheme.typography.bodySmall,
+      color = C.TextDim,
+      modifier = Modifier
+        .clickable(enabled = keyReset < 2) {
+          if (keyReset == 1) vm.resetAdbKey()
+          keyReset++
+        }
+        .padding(vertical = 8.dp),
+    )
 
     if (vm.discovery.vpnActive()) {
       Spacer(Modifier.height(14.dp))

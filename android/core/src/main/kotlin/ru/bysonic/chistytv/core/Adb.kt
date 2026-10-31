@@ -62,7 +62,7 @@ class Planner(private val db: Db) {
     val ids = setOf("any") + platforms(info).map { it.id }
     return db.packages.filter { e ->
       e.id in info.installed && e.platform in ids && e.action != "keep" && e.id !in info.disabled &&
-        (!Protect.isProtected(e.id) || e.overrideProtect)
+        !Protect.isProtected(e.id)
     }
   }
 

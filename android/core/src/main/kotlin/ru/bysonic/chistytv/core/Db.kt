@@ -40,7 +40,6 @@ data class PackageEntry(
   val note: String = "",
   val launcher: Boolean = false,
   val requires: List<String> = emptyList(),
-  @SerialName("override_protect") val overrideProtect: Boolean = false,
 ) {
   /** «Название — пояснение»; без пояснения — без висящего тире */
   val label: String get() = if (note.isNotBlank()) "$title — $note" else title

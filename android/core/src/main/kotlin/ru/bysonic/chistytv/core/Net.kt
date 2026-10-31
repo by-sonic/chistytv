@@ -106,8 +106,19 @@ object ApkSources {
 }
 
 /** Скачанные APK храним: без связи с GitHub возьмём сохранённый, как скрипт */
-class ApkCache(private val dir: File, private val net: Net) {
+class ApkCache(private val dir: File, private val net: Net, private val pins: Map<String, String> = ApkSignature.PINS) {
+  /** Подпись проверяем у любого файла, скачанного и сохранённого: перед установкой, каждый раз */
   fun get(key: String, out: Output, resolve: () -> ApkSource): File {
+    val file = fetch(key, out, resolve)
+    val pin = pins[key] ?: return file
+    if (pin !in ApkSignature.certHashes(file)) {
+      file.delete()
+      throw IOException("${file.name}: подпись не совпадает с подписью издателя. Файл удалён и не установлен. Если издатель сменил ключ, обновите ЧистыйТВ.")
+    }
+    return file
+  }
+
+  private fun fetch(key: String, out: Output, resolve: () -> ApkSource): File {
     dir.mkdirs()
     val cached = dir.listFiles { f -> f.name.startsWith(key) && f.name.endsWith(".apk") }?.maxByOrNull { it.lastModified() }
     return try {
