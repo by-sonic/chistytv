@@ -16,6 +16,7 @@
     { "id": "com.cvte.tv.launcher.highend", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
     { "id": "com.cvte.tv.launcher.saturn", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
     { "id": "com.cvte.tv.launcher.space", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
+    { "id": "com.cvte.tv.launcher.mars", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
     { "id": "com.cvte.tv.launcher.mosaix", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
     { "id": "com.yandex.android.advid", "platform": "yandex", "group": "ads", "action": "disable", "title": "Рекламный ID Яндекса", "note": "главный источник рекламы на Яндекс ТВ" },
     { "id": "com.yandex.tv.bugreportsender", "platform": "yandex", "group": "telemetry", "action": "disable", "title": "Отправка отчётов Яндексу", "note": "телеметрия" },

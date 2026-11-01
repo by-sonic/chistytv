@@ -149,7 +149,8 @@ YouTube без тормозов на таком телевизоре проще 
    adb reboot
    ```
 
-   На платах CVTE лаунчер называется `com.cvte.tv.launcher.…` (`highend`, `saturn`, `space`, `mosaix`).
+   На платах CVTE лаунчер называется `com.cvte.tv.launcher.…` (`highend`, `saturn`, `space`, `mosaix`,
+   `mars`), на экране это может быть Wisdom Share.
 5. **Сброс кнопками на корпусе.** Способ из [справки Яндекса](https://alice.yandex.ru/support/smart-tv/settings/reset-settings.html)
    для телевизоров на YaOS: выньте вилку и дождитесь, пока погаснет индикатор. Зажмите на корпусе кнопку
    включения или CH+, не отпуская вставьте вилку и держите не меньше 20 секунд, пока не появится прогресс
