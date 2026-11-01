@@ -74,6 +74,21 @@ class RealTvTest {
   }
 
   @Test
+  fun `лаунчер убран мимо ЧистогоТВ — откат находит и возвращает`() {
+    val s = session()
+    assumeTrue("только на эмуляторе", s.adb.shell("getprop ro.kernel.qemu") == "1")
+    val launcher = "com.google.android.tvlauncher"
+    assertTrue("на чистом ТВ искать нечего: ${s.removedHome()}", s.removedHome().isEmpty())
+    for (remove in listOf("pm uninstall -k --user 0 $launcher", "pm disable-user --user 0 $launcher")) {
+      s.adb.shell(remove)
+      assertEquals(remove, listOf(launcher), s.removedHome())
+      s.restore()
+      val now = s.refresh()
+      assertTrue(text, launcher in now.installed && launcher !in now.disabled)
+    }
+  }
+
+  @Test
   fun `чистка по настоящей базе и откат`() {
     val s = session()
     val recommended = s.plan().filter { it.action == "disable" }

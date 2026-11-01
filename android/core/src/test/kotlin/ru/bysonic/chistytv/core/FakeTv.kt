@@ -35,6 +35,9 @@ class FakeTv(
   var staleValidated = false
   private val dnsBroken get() = dotBlocked && dnsMode == "hostname"
 
+  /** Удалено для пользователя: pm uninstall -k --user 0, в списке -u остаётся */
+  val removed = mutableListOf<String>()
+
   /** Пакеты, которые прошивка не даёт включить обратно */
   val refuseEnable = mutableSetOf<String>()
   var freeMb: Long? = null
@@ -53,6 +56,10 @@ class FakeTv(
     if (c == "getprop") return props.entries.joinToString("\n") { "[${it.key}]: [${it.value}]" }
     if (c == "pm list packages") return installed.joinToString("\n") { "package:$it" }
     if (c == "pm list packages -d") return disabled.joinToString("\n") { "package:$it" }
+    if (c == "pm list packages -u") return (installed + removed).joinToString("\n") { "package:$it" }
+    Regex("^dumpsys package (\\S+)$").find(c)?.let {
+      return "User 0: installed=true enabled=" + if (it.groupValues[1] in disabled) "3" else "0"
+    }
     Regex("^pm disable-user --user 0 (\\S+)$").find(c)?.let {
       val p = it.groupValues[1]
       if (refuse) return "java.lang.SecurityException: Shell cannot change component state for $p"
@@ -62,6 +69,8 @@ class FakeTv(
     }
     Regex("^pm enable (\\S+)$").find(c)?.let {
       val p = it.groupValues[1]
+      // Как настоящий Android: удалённому для пользователя отвечает «enabled», а он так и не появляется
+      if (p in removed) return "Package $p new state: enabled"
       if (p !in installed) return "Error: Unknown package: $p"
       if (p in refuseEnable) return "java.lang.SecurityException: Shell cannot change component state for $p"
       disabled.remove(p)
@@ -69,6 +78,7 @@ class FakeTv(
     }
     Regex("^cmd package install-existing (\\S+)$").find(c)?.let {
       val p = it.groupValues[1]
+      if (removed.remove(p)) installed += p
       if (p !in installed) return "Failure [Package $p doesn't exist]"
       // Как на настоящем ТВ: «установлен» отвечает, даже если пакет так и остался отключённым
       return "Package $p installed for user: 0"

@@ -93,16 +93,32 @@ class TvSession(
 
   data class RestoreResult(val restored: List<String>, val failed: List<String>, val hadJournal: Boolean)
 
+  /**
+   * Штатный лаунчер, удалённый или отключённый мимо ЧистогоТВ (вручную, ассистентом): в журнале его нет.
+   * Отключённое прошивкой (enabled=2) не трогаем: только то, что отключил человек (enabled=3).
+   */
+  fun removedHome(): List<String> {
+    fun list(command: String) = TvInfo.parsePackages(adb.shell(command))
+      .filter { TvStore.SAFE_PKG.matches(it) && HOME_NAME.containsMatchIn(it) && "updater" !in it }
+    val now = list("pm list packages").toSet()
+    return list("pm list packages -u").filter { it !in now } +
+      list("pm list packages -d").filter { "enabled=3" in adb.shell("dumpsys package $it") }
+  }
+
   fun restore(): RestoreResult {
     val store = store
-    val pkgs = store.recorded()
+    val home = removedHome()
+    if (home.isNotEmpty()) out.info("Нашёл штатный главный экран, убранный не через ЧистыйТВ: ${home.joinToString(", ")}")
+    val pkgs = (store.recorded() + home).distinct()
     if (pkgs.isEmpty()) {
       out.warn("Для этого телевизора нет журнала ЧистогоТВ — возвращать нечего.")
       return RestoreResult(emptyList(), emptyList(), false)
     }
+    val present = TvInfo.parsePackages(adb.shell("pm list packages"))
     val answers = pkgs.associateWith { p ->
-      val r = adb.shell("pm enable $p")
-      if (r.contains("enabled", ignoreCase = true)) r else adb.shell("cmd package install-existing $p")
+      // Удалённому для пользователя pm enable отвечает «enabled», а на ТВ он так и не появляется: сначала вернуть
+      val back = if (p in present) "" else adb.shell("cmd package install-existing $p")
+      "$back\n" + adb.shell("pm enable $p")
     }
     // Ответ pm — не доказательство: смотрим, что на самом деле стало на телевизоре
     val now = refresh()
@@ -411,7 +427,8 @@ class TvSession(
   fun disableStockLauncher(): HardResult {
     val stock = stockLaunchers()
     if (stock.isEmpty()) {
-      out.warn("Штатный лаунчер этой прошивки не знаю — оставляю как есть.")
+      out.warn("Проверенного способа заменить штатный лаунчер на этой прошивке нет — оставляю как есть.")
+      out.warn("Не удаляйте и не отключайте его сами или через ИИ-ассистента: телевизор может перестать загружаться дальше логотипа.")
       return HardResult.UNKNOWN_STOCK
     }
     val wifiOwners = adb.shell("dumpsys wifi | grep -o 'cname=[^ ]*'")
@@ -435,6 +452,7 @@ class TvSession(
 
   companion object {
     private val DISABLED = Regex("disabled-user|new state: disabled", RegexOption.IGNORE_CASE)
+    private val HOME_NAME = Regex("launcher|tvhome|\\.home$", RegexOption.IGNORE_CASE)
     private val GONE = Regex("Unknown package|doesn't exist|does not exist|not installed", RegexOption.IGNORE_CASE)
     private val NO_SPACE =Regex("INSUFFICIENT_STORAGE|not enough space|No space left", RegexOption.IGNORE_CASE)
 

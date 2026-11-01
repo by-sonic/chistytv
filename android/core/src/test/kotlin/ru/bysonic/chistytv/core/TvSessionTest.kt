@@ -108,6 +108,23 @@ class TvSessionTest {
   }
 
   @Test
+  fun `2д лаунчер убран мимо ЧистогоТВ — журнала нет, а вернуть надо`() {
+    val tv = FakeTv(installed + listOf("com.leanbitlab.ltvL", "com.cvte.tv.launcher.saturn.skin"))
+    tv.removed += "com.cvte.tv.launcher.highend"
+    tv.disabled += "com.cvte.tv.launcher.saturn.skin"
+    val r = run(tv)
+    assertEquals(setOf("com.cvte.tv.launcher.highend", "com.cvte.tv.launcher.saturn.skin"), r.session.removedHome().toSet())
+    val res = r.session.restore()
+    assertTrue(r.text, res.failed.isEmpty() && "com.cvte.tv.launcher.highend" in tv.installed && tv.disabled.isEmpty())
+    assertTrue(r.text, r.text.contains("убранный не через ЧистыйТВ"))
+  }
+
+  @Test
+  fun `2е лаунчер CVTE под защитой, даже если база просит отключить`() {
+    assertTrue(Protect.isProtected("com.cvte.tv.launcher.highend"))
+  }
+
+  @Test
   fun `3 прошивка запрещает отключение — понятное сообщение`() {
     val tv = FakeTv(installed, refuse = true)
     val r = run(tv)

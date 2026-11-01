@@ -96,6 +96,14 @@ Set-State $tv 'refuse_enable' @()
 $out = Run @('-Action', 'restore', '-Yes')
 Check 'второй откат добил остаток' ((@((State $tv).disabled).Count -eq 0) -and ($out -match 'Все отключённые ЧистымТВ приложения включены')) $out
 
+# 2г. Лаунчер удалён мимо ЧистогоТВ: журнала нет, а вернуть надо
+Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chistytv.txt' | Remove-Item -Force
+$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.cvte.tv.launcher.saturn.skin')) @{ removed = @('com.cvte.tv.launcher.highend') }
+Set-State $tv 'disabled' @('com.cvte.tv.launcher.saturn.skin')
+$out = Run @('-Action', 'restore', '-Yes')
+$s = State $tv
+Check 'удалённый и отключённый вручную лаунчер вернулся' ((@($s.installed) -contains 'com.cvte.tv.launcher.highend') -and (@($s.disabled).Count -eq 0) -and ($out -match 'убранный не через ЧистыйТВ')) $out
+
 # 3. Прошивка, запрещающая отключение — понятное сообщение
 $tv = New-Tv $installed @{ refuse = $true }
 $out = Run @('-Action', 'clean', '-Yes')

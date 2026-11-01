@@ -400,10 +400,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
   fun openRestore() {
     go(Screen.Restore)
-    op { journal = store.recorded() }
+    op { journal = store.recorded() + removedHome() }
   }
 
-  fun runRestore() = op { restoreResult = restore(); journal = store.recorded() }
+  fun runRestore() = op { restoreResult = restore(); journal = store.recorded() + removedHome() }
 
   fun openDns() {
     go(Screen.Dns)

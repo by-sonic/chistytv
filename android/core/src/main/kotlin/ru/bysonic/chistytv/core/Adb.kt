@@ -40,6 +40,7 @@ object Protect {
     "packageinstaller", "inputmethod", "keyboard", "leanbackime", "\\.ime$", "tvinput", "tvcenter", "tv\\.service",
     "bluetooth", "remote", "factory", "fac$", "\\.hkcfac", "^com\\.android\\.vending$", "^com\\.google\\.android\\.gms$",
     "^com\\.google\\.android\\.gsf$", "setupwraith", "setupwizard", "provision", "networkstack", "wifi", "webview",
+    "^com\\.cvte\\.tv\\.launcher",
   )
 
   // В PowerShell -match не различает регистр — здесь так же

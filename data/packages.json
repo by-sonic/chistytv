@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-21",
+  "updated": "2026-11-02",
   "about": "action: disable — отключается в рекомендуемой чистке; ask — только если пользователь отметит; keep — ЧистыйТВ никогда не трогает. launcher — штатный главный экран, отключается только в пункте «Новый главный экран» вместе с requires. Источники — в docs/SOURCES.md.",
   "platforms": [
     { "id": "yandex", "name": "Яндекс ТВ (YaOS)", "detect_packages": ["com.yandex.tv.home", "com.yandex.tv.services", "com.yandex.tv.settings"] },
@@ -9,9 +9,14 @@
     { "id": "haier", "name": "Haier", "detect_packages": ["com.haier.appmanager.dispatcher"], "detect_manufacturer": "(?i)^haier" },
     { "id": "tcl", "name": "TCL", "detect_packages": ["com.tcl.tv"], "detect_manufacturer": "(?i)^tcl" },
     { "id": "hisense", "name": "Hisense", "detect_packages": ["com.hisense.evservice"], "detect_manufacturer": "(?i)^hisense" },
+    { "id": "cvte", "name": "Плата CVTE", "detect_packages": ["com.cvte.fac.menu", "com.cvte.settings"], "detect_manufacturer": "(?i)^cvt" },
     { "id": "google", "name": "Google TV / Android TV", "detect_packages": ["com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher", "com.google.android.leanbacklauncher"] }
   ],
   "packages": [
+    { "id": "com.cvte.tv.launcher.highend", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
+    { "id": "com.cvte.tv.launcher.saturn", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
+    { "id": "com.cvte.tv.launcher.space", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
+    { "id": "com.cvte.tv.launcher.mosaix", "platform": "cvte", "group": "system", "action": "keep", "title": "Главный экран CVTE", "note": "без него телевизор может не загрузиться дальше логотипа" },
     { "id": "com.yandex.android.advid", "platform": "yandex", "group": "ads", "action": "disable", "title": "Рекламный ID Яндекса", "note": "главный источник рекламы на Яндекс ТВ" },
     { "id": "com.yandex.tv.bugreportsender", "platform": "yandex", "group": "telemetry", "action": "disable", "title": "Отправка отчётов Яндексу", "note": "телеметрия" },
     { "id": "com.yandex.launcher.updaterapp", "platform": "yandex", "group": "updates", "action": "ask", "title": "Обновления Яндекс ТВ", "note": "обновления часто возвращают рекламу; без него не будет и новых прошивок" },

@@ -22,6 +22,8 @@ switch ($argv[0]) {
     if ($cmd -match '^getprop (\S+)$') { $state.props.($Matches[1]); return }
     if ($cmd -eq 'getprop') { $state.props.PSObject.Properties | ForEach-Object { "[$($_.Name)]: [$($_.Value)]" }; return }
     if ($cmd -eq 'pm list packages') { $state.installed | ForEach-Object { "package:$_" }; return }
+    if ($cmd -eq 'pm list packages -u') { @($state.installed) + @($state.removed) | Where-Object { $_ } | ForEach-Object { "package:$_" }; return }
+    if ($cmd -match '^dumpsys package (\S+)$') { if (@($state.disabled) -contains $Matches[1]) { 'User 0: installed=true enabled=3' } else { 'User 0: installed=true enabled=0' }; return }
     if ($cmd -eq 'pm list packages -d') { $state.disabled | ForEach-Object { "package:$_" }; return }
     if ($cmd -match '^pm disable-user --user 0 (\S+)$') {
       $p = $Matches[1]
@@ -33,6 +35,8 @@ switch ($argv[0]) {
     }
     if ($cmd -match '^pm enable (\S+)$') {
       $p = $Matches[1]
+      # Как настоящий Android: удалённому для пользователя отвечает «enabled», а он так и не появляется
+      if (@($state.removed) -contains $p) { "Package $p new state: enabled"; return }
       if ($state.installed -notcontains $p) { "Error: Unknown package: $p"; return }
       if (@($state.refuse_enable) -contains $p) { "java.lang.SecurityException: Shell cannot change component state for $p"; return }
       $state.disabled = @($state.disabled | Where-Object { $_ -ne $p })
@@ -41,7 +45,11 @@ switch ($argv[0]) {
     }
     if ($cmd -match '^cmd package install-existing (\S+)$') {
       $p = $Matches[1]
-      if ($state.installed -notcontains $p) { "Failure [Package $p doesn't exist]"; return }
+      if (@($state.removed) -contains $p) {
+        $state.installed = @($state.installed) + $p
+        $state | Add-Member -Force removed @($state.removed | Where-Object { $_ -ne $p })
+        Save
+      } elseif ($state.installed -notcontains $p) { "Failure [Package $p doesn't exist]"; return }
       # Как на настоящем ТВ: «установлен» отвечает, даже если пакет так и остался отключённым
       "Package $p installed for user: 0"; return
     }

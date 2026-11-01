@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.3'
+$Script:Version = '0.2.4'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -304,7 +304,8 @@ $Script:ProtectPatterns = @(
   '^android$', '^com\.android\.systemui$', '^com\.android\.settings$', '^com\.android\.tv\.settings$',
   'packageinstaller', 'inputmethod', 'keyboard', 'leanbackime', '\.ime$', 'tvinput', 'tvcenter', 'tv\.service',
   'bluetooth', 'remote', 'factory', 'fac$', '\.hkcfac', '^com\.android\.vending$', '^com\.google\.android\.gms$',
-  '^com\.google\.android\.gsf$', 'setupwraith', 'setupwizard', 'provision', 'networkstack', 'wifi', 'webview'
+  '^com\.google\.android\.gsf$', 'setupwraith', 'setupwizard', 'provision', 'networkstack', 'wifi', 'webview',
+  '^com\.cvte\.tv\.launcher'
 )
 
 function Test-Protected([string]$Pkg) {
@@ -358,6 +359,20 @@ function Add-RestoreLog([string]$Pkg) {
   New-Item -ItemType Directory -Force -Path (Split-Path $log) | Out-Null
   Add-Content -Path $log -Value $Pkg -Encoding UTF8
   if ($Pkg -cmatch $Script:SafePkg) { Sh "mkdir -p /data/local/tmp/chistytv && echo $Pkg >> $($Script:TvJournal)" | Out-Null }
+}
+
+# Штатный лаунчер, удалённый или отключённый мимо ЧистогоТВ (вручную, ассистентом): в журнале его нет.
+# Отключённое прошивкой (enabled=2) не трогаем: только то, что отключил человек (enabled=3).
+function Get-RemovedHome {
+  $list = {
+    param([string]$Command)
+    @((Sh $Command) -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() } |
+      Where-Object { $_ -cmatch $Script:SafePkg -and $_ -match 'launcher|tvhome|\.home$' -and $_ -notmatch 'updater' })
+  }
+  $now = @(& $list 'pm list packages')
+  $removed = @(& $list 'pm list packages -u' | Where-Object { $now -notcontains $_ })
+  $off = @(& $list 'pm list packages -d' | Where-Object { (Sh "dumpsys package $_") -match 'enabled=3' })
+  return @($removed + $off)
 }
 
 function Get-RestorePackages {
@@ -460,13 +475,17 @@ function Show-HomeHint {
 function Invoke-Restore {
   Title 'Вернуть как было'
   $log = Get-RestoreLog
-  $pkgs = @(Get-RestorePackages)
+  $stockHome = @(Get-RemovedHome)
+  if ($stockHome.Count) { Say "  Нашёл штатный главный экран, убранный не через ЧистыйТВ: $($stockHome -join ', ')" 'White' }
+  $pkgs = @(@(Get-RestorePackages) + $stockHome | Select-Object -Unique)
   if (-not $pkgs.Count) { Warn "Для этого телевизора нет журнала ЧистогоТВ — ни здесь ($log), ни на самом ТВ."; return }
+  $present = @((Sh 'pm list packages') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() })
   $answers = [ordered]@{}
   foreach ($pkg in $pkgs) {
-    $out = Sh "pm enable $pkg"
-    if ($out -notmatch 'enabled') { $out = Sh "cmd package install-existing $pkg" }
-    $answers[$pkg] = $out
+    # Удалённому для пользователя pm enable отвечает «enabled», а на ТВ он так и не появляется: сначала вернуть
+    $out = ''
+    if ($present -notcontains $pkg) { $out = Sh "cmd package install-existing $pkg" }
+    $answers[$pkg] = "$out`n$(Sh "pm enable $pkg")"
   }
   # Ответ pm — не доказательство: смотрим, что на самом деле стало на телевизоре
   $installed = @((Sh 'pm list packages') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() })
@@ -908,7 +927,12 @@ function Invoke-Launcher {
       }
     }
   }
-  if (-not $stock.Count) { Warn 'Штатный лаунчер этой прошивки не знаю — оставляю как есть. Подробнее: PROMPT.md.'; return }
+  if (-not $stock.Count) {
+    Warn 'Проверенного способа заменить штатный лаунчер на этой прошивке нет — оставляю как есть.'
+    Warn 'Не удаляйте и не отключайте его сами или через ИИ-ассистента: телевизор может перестать загружаться дальше логотипа.'
+    Say '  LTvLauncher установлен: его можно открывать из списка приложений.' 'DarkGray'
+    return
+  }
   Say ''
   Say '  Жёсткий способ — отключить штатный лаунчер. Обратимо через «Вернуть как было».' 'Yellow'
   foreach ($e in $stock) { Say "    • $($e.title) ($($e.id))" 'DarkGray' }
