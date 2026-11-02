@@ -221,7 +221,10 @@ class TvSession(
       out.warn("Стоит старая сборка SmartTube (${old.joinToString(", ")}): после смены ключа разработчика она не обновляется. Поставлю новую рядом, старую потом можно удалить.")
     }
     val apk = apks.get("smarttube", out) { ApkSources.smartTube(info) }
-    return installApk(apk, "SmartTube").also { refresh() }
+    return installApk(apk, "SmartTube").also {
+      refresh()
+      if (it) out.hint("Реклама убирается только в SmartTube: в обычном приложении YouTube она останется. Смотрите через SmartTube.")
+    }
   }
 
   fun installHapp(): Boolean {
@@ -375,6 +378,49 @@ class TvSession(
     if (was != null) out.ok("AdGuard DNS выключен, вернул как было: ${was.title}")
     else out.ok("Частный DNS выключен")
   }
+
+  // ─── Отчёт ──────────────────────────────────────────────────────────
+
+  /** tool — чем собран отчёт, problems — что не получилось за этот запуск */
+  fun report(tool: String, problems: List<String>): TvReport {
+    val now = refresh()
+    val system = TvInfo.parsePackages(adb.shell("pm list packages -s"))
+    val third = TvInfo.parsePackages(adb.shell("pm list packages -3")).size
+    val known = db.packages.map { it.id }.toSet()
+    val unknown = system.filter { it !in known }.sorted()
+    val off = now.disabled.filter { it in system }.sorted()
+    val homeArgs = "--brief -a android.intent.action.MAIN -c android.intent.category.HOME"
+    // Сторонний главный экран называем только свой: остальные — выбор человека
+    fun homes(command: String) = adb.shell(command).lines().map { it.trim() }.filter {
+      Regex("^[\\w.]+/[\\w.$]+$").matches(it) && it.substringBefore('/').let { p -> p in system || p == LAUNCHER_PACKAGE }
+    }
+    val dns = dnsState().let { if (it.enabled) "AdGuard DNS" else if (it.mode == "hostname") "свой частный DNS" else it.title }
+    val head = buildList {
+      add("### Отчёт о телевизоре")
+      add("")
+      add("- **Собран:** $tool")
+      add("- **Телевизор:** ${now.manufacturer} / ${now.brand} / ${now.model}, устройство ${prop("ro.product.device")}")
+      add("- **Android:** ${now.android} (SDK ${now.sdk}), ${now.abiList}")
+      add("- **Сборка:** ${prop("ro.build.fingerprint")}")
+      add("- **Чип:** ${prop("ro.board.platform")} / ${prop("ro.hardware")}")
+      add("- **Платформа:** ${platforms.joinToString(", ") { it.name }.ifEmpty { "не распознана" }}")
+      add("- **Главный экран:** ${homes("cmd package resolve-activity $homeArgs").lastOrNull() ?: "не определён"}")
+      add("- **Кандидаты:** ${homes("cmd package query-activities $homeArgs").distinct().joinToString(", ").ifEmpty { "нет данных" }}")
+      add("- **Приложения:** всего ${now.installed.size}, системных ${system.size}, сторонних $third")
+      add("- **Частный DNS:** $dns")
+      add("- **Отключил ЧистыйТВ:** ${store.recorded().joinToString(", ").ifEmpty { "ничего" }}")
+      add("- **Отключено на ТВ:** ${off.joinToString(", ").ifEmpty { "ничего" }}")
+      add("")
+      add("**Что не получилось:**")
+      if (problems.isEmpty()) add("- ошибок в этом запуске нет")
+      problems.takeLast(15).forEach { add("- ${TvReport.scrub(it)}") }
+    }
+    val tail = listOf("", "**Системные пакеты не из базы (${unknown.size}):**", "", "```text") + unknown + "```"
+    val ask = listOf("", "**Что случилось:** (опишите своими словами)")
+    return TvReport("Отчёт: ${now.title}, Android ${now.android}", (head + tail + ask).joinToString("\n"), (head + ask).joinToString("\n"))
+  }
+
+  private fun prop(name: String) = adb.shell("getprop $name").trim()
 
   // ─── Главный экран ──────────────────────────────────────────────────
 

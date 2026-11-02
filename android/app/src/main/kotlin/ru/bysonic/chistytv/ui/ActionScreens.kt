@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.ContentPaste
@@ -359,6 +360,42 @@ fun RestoreScreen(vm: MainViewModel) {
       Spacer(Modifier.height(14.dp))
     }
     LogPanel(if (r == null && !vm.busy) emptyList() else vm.log, vm.busy)
+    Spacer(Modifier.height(16.dp))
+  }
+}
+
+// ─── Отчёт ──────────────────────────────────────────────────────────────
+
+@Composable
+fun ReportScreen(vm: MainViewModel) {
+  val r = vm.tvReport
+  val context = LocalContext.current
+  var note by remember { mutableStateOf<String?>(null) }
+  fun copy(text: String) {
+    val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clip.setPrimaryClip(android.content.ClipData.newPlainText("Отчёт ЧистогоТВ", text))
+  }
+  ActionScaffold("Отчёт о телевизоре", vm, bottom = {
+    if (r != null) {
+      GradientButton("Открыть issue на GitHub", {
+        copy(r.full)
+        val opened = runCatching {
+          context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(r.url())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        note = if (opened) "Полный отчёт в буфере обмена. Если на GitHub его не видно, вставьте в поле текста." else "Браузер не открылся. Отчёт в буфере обмена: пришлите его в Telegram @sonic_h1."
+      }, Modifier.fillMaxWidth(), Icons.Rounded.BugReport)
+      GhostButton("Скопировать для Telegram @sonic_h1", {
+        copy(r.full)
+        note = "Скопировано. Отправьте в Telegram @sonic_h1."
+      }, Modifier.fillMaxWidth())
+    }
+  }) {
+    Header(Icons.Rounded.BugReport, Accent.Report, "Отчёт о телевизоре", "Модель, сборка, системные пакеты и что не получилось. IP, MAC, серийный номер и ваши приложения в отчёт не попадают. Ничего не уйдёт, пока вы сами не нажмёте кнопку на GitHub.")
+    note?.let { Hint(it) ; Spacer(Modifier.height(10.dp)) }
+    if (r == null) LogPanel(vm.log, vm.busy)
+    else GlassCard(Modifier.fillMaxWidth()) {
+      Text(r.full, style = MaterialTheme.typography.bodySmall, color = C.TextDim, fontFamily = FontFamily.Monospace)
+    }
     Spacer(Modifier.height(16.dp))
   }
 }

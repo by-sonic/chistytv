@@ -13,7 +13,7 @@
 [CmdletBinding()]
 param(
   [string]$TvIp,
-  [ValidateSet('menu', 'clean', 'restore', 'youtube', 'launcher', 'dns', 'info')]
+  [ValidateSet('menu', 'clean', 'restore', 'youtube', 'launcher', 'dns', 'info', 'report')]
   [string]$Action = 'menu',
   [string]$Subscription,
   [switch]$Yes,

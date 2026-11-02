@@ -42,6 +42,7 @@ fun ChistyApp(vm: MainViewModel, finish: () -> Unit) {
         Screen.Launcher -> LauncherScreen(vm)
         Screen.Dns -> DnsScreen(vm)
         Screen.Restore -> RestoreScreen(vm)
+        Screen.Report -> ReportScreen(vm)
       }
     }
   }

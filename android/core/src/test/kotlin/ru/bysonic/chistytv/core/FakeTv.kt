@@ -35,6 +35,10 @@ class FakeTv(
   var staleValidated = false
   private val dnsBroken get() = dotBlocked && dnsMode == "hostname"
 
+  /** Отчёт: сторонние приложения человека и кто отвечает на HOME */
+  val thirdParty = mutableSetOf<String>()
+  val homeApps = mutableListOf<String>()
+
   /** Удалено для пользователя: pm uninstall -k --user 0, в списке -u остаётся */
   val removed = mutableListOf<String>()
 
@@ -56,6 +60,13 @@ class FakeTv(
     if (c == "getprop") return props.entries.joinToString("\n") { "[${it.key}]: [${it.value}]" }
     if (c == "pm list packages") return installed.joinToString("\n") { "package:$it" }
     if (c == "pm list packages -d") return disabled.joinToString("\n") { "package:$it" }
+    if (c == "pm list packages -s") return (installed - thirdParty).joinToString("\n") { "package:$it" }
+    if (c == "pm list packages -3") return thirdParty.joinToString("\n") { "package:$it" }
+    if (c == "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME" ||
+      c == "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME"
+    ) {
+      return "priority=0 preferredOrder=0\n" + homeApps.joinToString("\n")
+    }
     if (c == "pm list packages -u") return (installed + removed).joinToString("\n") { "package:$it" }
     Regex("^dumpsys package (\\S+)$").find(c)?.let {
       return "User 0: installed=true enabled=" + if (it.groupValues[1] in disabled) "3" else "0"

@@ -124,6 +124,50 @@ class TvSessionTest {
     assertTrue(Protect.isProtected("com.cvte.tv.launcher.highend"))
   }
 
+  private fun reportTv() = FakeTv(installed + listOf("com.cvte.unknown.service", "com.leanbitlab.ltvL", "com.secret.bank")).apply {
+    props["ro.build.fingerprint"] = "MediaTek/m7332_eu/m7332_eu:11/PPR2/builder:userdebug/dev-keys"
+    props["ro.serialno"] = "SERIAL-12345"
+    thirdParty += listOf("com.secret.bank", "com.leanbitlab.ltvL")
+    homeApps += listOf("com.cvte.tv.launcher.highend/.Main", "com.leanbitlab.ltvL/.MainActivity", "com.secret.bank/.Home")
+  }
+
+  @Test
+  fun `отчёт — модель, сборка и пакеты не из базы`() {
+    val tv = reportTv()
+    val r = run(tv)
+    val rep = r.session.report("приложение 1.0.5", emptyList())
+    assertTrue(rep.full, rep.full.contains("MiTV-TEST") && rep.full.contains("m7332_eu") && rep.full.contains("приложение 1.0.5"))
+    assertTrue("незнакомый пакет в отчёте", rep.full.contains("com.cvte.unknown.service"))
+    assertFalse("пакет из базы не нужен", rep.full.contains("\n${safe[0]}\n"))
+    assertTrue("сторонний лаунчер ЧистогоТВ виден", rep.full.contains("com.leanbitlab.ltvL/.MainActivity"))
+    assertTrue("короткий текст без списка пакетов", !rep.short.contains("com.cvte.unknown.service") && rep.short.contains("Что случилось"))
+  }
+
+  @Test
+  fun `отчёт — ничего личного`() {
+    val tv = reportTv()
+    val rep = run(tv).session.report("скрипт", listOf(
+      "Не подключился к 192.168.1.13:5555 с MAC 8c:35:92:28:64:87",
+      "Подписка https://sub.example.com/abc123?token=SECRET не принята",
+      "Журнала нет: C:\\Users\\Иван Петров\\AppData\\work (ни на ТВ)",
+    ))
+    for (bad in listOf("com.secret.bank", "SERIAL-12345", "192.168", "8c:35", "SECRET", "abc123", "Иван", "Петров")) {
+      assertFalse("в отчёт попало: $bad\n${rep.full}", rep.full.contains(bad))
+    }
+    assertTrue(rep.full, rep.full.contains("<ip>") && rep.full.contains("<mac>") && rep.full.contains("<ссылка>") && rep.full.contains("<папка>"))
+  }
+
+  @Test
+  fun `отчёт — адрес укладывается в предел GitHub`() {
+    val cyr = "ошибка ".repeat(25)
+    val full = TvReport("Отчёт: ТВ", "x".repeat(500), "y".repeat(500))
+    assertTrue(full.url().contains("x".repeat(500)))
+    val long = TvReport("Отчёт: ТВ", cyr.repeat(30), "короткий")
+    assertTrue("не влез полный — короткий", long.url().length <= TvReport.MAX_URL && long.url().endsWith(java.net.URLEncoder.encode("короткий", "UTF-8")))
+    val huge = TvReport("Отчёт: ТВ", cyr.repeat(30), cyr.repeat(30))
+    assertTrue("не влез и короткий — просьба вставить", huge.url().length <= TvReport.MAX_URL)
+  }
+
   @Test
   fun `3 прошивка запрещает отключение — понятное сообщение`() {
     val tv = FakeTv(installed, refuse = true)
@@ -387,6 +431,14 @@ class TvSessionTest {
     assertTrue(r.session.installApk(apk1Mb(r), "SmartTube"))
     assertFalse(tv.trimmed)
     assertFalse(r.text.contains("Кэш"))
+  }
+
+  @Test
+  fun `SmartTube — подсказка, что реклама уходит только в нём`() {
+    val tv = FakeTv(installed)
+    val r = run(tv)
+    assertTrue(r.session.installSmartTube())
+    assertTrue(r.text, r.text.contains("только в SmartTube"))
   }
 
   @Test

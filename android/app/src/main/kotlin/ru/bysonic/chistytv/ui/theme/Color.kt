@@ -34,4 +34,5 @@ object Accent {
   val Home = listOf(Color(0xFF2DD4BF), Color(0xFF38BDF8))
   val Dns = listOf(Color(0xFF34D399), Color(0xFF2DD4BF))
   val Restore = listOf(Color(0xFFFBBF24), Color(0xFFF59E0B))
+  val Report = listOf(Color(0xFF38BDF8), Color(0xFF7C5CFF))
 }

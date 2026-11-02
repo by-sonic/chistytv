@@ -212,6 +212,32 @@ $tv = New-Tv $installed
 $out = RunInstall
 Check 'обычная установка не трогает кэш' ((-not (State $tv).trimmed) -and $out -match 'SmartTube установлен' -and $out -notmatch 'Кэш') $out
 
+# 12б2. Отчёт о телевизоре: модель и незнакомые пакеты есть, личного нет
+$tv = New-Tv ($installed + @('com.cvte.unknown.service', 'com.leanbitlab.ltvL', 'com.secret.bank')) @{
+  third_party = @('com.secret.bank', 'com.leanbitlab.ltvL')
+  home_apps   = @('com.cvte.tv.launcher.highend/.Main', 'com.leanbitlab.ltvL/.MainActivity', 'com.secret.bank/.Home')
+}
+$s = State $tv
+$s.props | Add-Member -Force 'ro.serialno' 'SERIAL-12345'
+$s.props | Add-Member -Force 'ro.build.fingerprint' 'MediaTek/m7332_eu/m7332_eu:11/PPR2/builder:userdebug/dev-keys'
+$s | ConvertTo-Json -Depth 5 | Set-Content $tv -Encoding UTF8
+$out = Run @('-Action', 'report', '-Yes')
+$rep = Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'report-*.md' | Sort-Object LastWriteTime | Select-Object -Last 1
+$text = if ($rep) { [IO.File]::ReadAllText($rep.FullName, [Text.Encoding]::UTF8) } else { '' }
+Check 'отчёт: модель, сборка, незнакомый пакет' (($text -match 'MiTV-TEST') -and ($text -match 'm7332_eu') -and ($text -match 'com\.cvte\.unknown\.service') -and ($text -match 'скрипт ')) $out
+Check 'отчёт: без серийника и сторонних приложений' (($text -notmatch 'SERIAL-12345') -and ($text -notmatch 'com\.secret\.bank') -and ($out -notmatch 'com\.secret\.bank')) $text
+Check 'отчёт: лаунчер ЧистогоТВ виден, чужой нет' ($text -match 'com\.leanbitlab\.ltvL/\.MainActivity') $text
+$main = Join-Path $root 'src\main.ps1'
+$ast2 = [System.Management.Automation.Language.Parser]::ParseFile($main, [ref]$null, [ref]$null)
+foreach ($n in 'Protect-ReportLine', 'Get-ReportUrl') {
+  . ([scriptblock]::Create(($ast2.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -eq $n }, $false) | Select-Object -First 1).Extent.Text))
+}
+$clean = (Protect-ReportLine 'к 192.168.1.13:5555, MAC 8c:35:92:28:64:87, https://sub.example.com/abc?t=SECRET, C:\Users\Иван Петров\work (ни на ТВ)')
+Check 'отчёт: адреса, ссылки и пути убраны' (($clean -notmatch '192\.168|8c:35|SECRET|Иван|Петров') -and ($clean -match '<ip>') -and ($clean -match '<mac>') -and ($clean -match '<ссылка>') -and ($clean -match '<папка>')) $clean
+$Script:Repo = 'by-sonic/chistytv'
+$long = [pscustomobject]@{ Title = 'Отчёт: ТВ'; Full = ('ошибка ' * 2000); Short = ('ошибка ' * 2000) }
+Check 'отчёт: адрес не длиннее 2 КБ' ((Get-ReportUrl $long).Length -le 2000)
+
 # 12в. Подпись издателя: читаем сертификат из блока подписи APK
 function New-SignedApk([string]$Path, [byte[]]$Cert) {
   $u32 = { param($v) [BitConverter]::GetBytes([uint32]$v) }

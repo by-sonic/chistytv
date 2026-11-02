@@ -30,13 +30,14 @@ import ru.bysonic.chistytv.core.Output
 import ru.bysonic.chistytv.core.PackageEntry
 import ru.bysonic.chistytv.core.Tone
 import ru.bysonic.chistytv.core.TvInfo
+import ru.bysonic.chistytv.core.TvReport
 import ru.bysonic.chistytv.core.TvSession
 import java.io.File
 import java.io.IOException
 
 private const val TAG = "ChistyTV"
 
-enum class Screen { Start, Search, Pair, Connecting, Home, Clean, YouTube, Launcher, Dns, Restore }
+enum class Screen { Start, Search, Pair, Connecting, Home, Clean, YouTube, Launcher, Dns, Restore, Report }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
   private val ctx: Context get() = getApplication()
@@ -318,6 +319,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
   var busy by mutableStateOf(false)
     private set
   val log = mutableStateListOf<Line>()
+
+  /** Что не получилось за этот запуск: журнал на экране очищается, а для отчёта это нужно */
+  private val problems = java.util.concurrent.CopyOnWriteArrayList<String>()
+  var tvReport by mutableStateOf<TvReport?>(null)
+    private set
+
+  fun openReport() {
+    tvReport = null
+    go(Screen.Report)
+    op { tvReport = report("приложение ${BuildConfig.VERSION_NAME}", problems.toList()) }
+  }
   var lostConnection by mutableStateOf(false)
     private set
 
@@ -358,13 +370,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     if (clearLog) log.clear()
     viewModelScope.launch {
       withContext(Dispatchers.IO) {
-        s.out = Output { line -> main.post { log += line } }
+        s.out = Output { line ->
+          if (line.tone == Tone.WARN || line.tone == Tone.FAIL) problems += line.text
+          main.post { log += line }
+        }
         try {
           s.block()
         } catch (e: Throwable) {
           val lost = e is IOException && !(connection?.connected ?: false)
+          val text = if (lost) "Связь с телевизором потеряна" else "Ошибка: ${e.message ?: e.javaClass.simpleName}"
+          problems += text
           main.post {
-            log += Line(Tone.FAIL, if (lost) "Связь с телевизором потеряна" else "Ошибка: ${e.message ?: e.javaClass.simpleName}")
+            log += Line(Tone.FAIL, text)
             if (lost) lostConnection = true
           }
         }

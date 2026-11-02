@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.LinkOff
@@ -105,6 +106,7 @@ fun HomeScreen(vm: MainViewModel) {
         ) { vm.go(Screen.Launcher) }
         ActionTile(Icons.Rounded.Shield, Accent.Dns, "Блокировка рекламы через DNS", "AdGuard DNS режет рекламу и трекеры в приложениях") { vm.openDns() }
         ActionTile(Icons.Rounded.Replay, Accent.Restore, "Вернуть как было", "Включить всё, что отключил ЧистыйТВ") { vm.openRestore() }
+        ActionTile(Icons.Rounded.BugReport, Accent.Report, "Отчёт о телевизоре", "Что-то не получилось? Соберёт данные для разработчика") { vm.openReport() }
       }
       Spacer(Modifier.height(20.dp))
       Hint(

@@ -15,7 +15,7 @@
 [CmdletBinding()]
 param(
   [string]$TvIp,
-  [ValidateSet('menu', 'clean', 'restore', 'youtube', 'launcher', 'dns', 'info')]
+  [ValidateSet('menu', 'clean', 'restore', 'youtube', 'launcher', 'dns', 'info', 'report')]
   [string]$Action = 'menu',
   [string]$Subscription,
   [switch]$Yes,
@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.4'
+$Script:Version = '0.2.5'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -49,8 +49,10 @@ $Script:BackupDir = $null
 function Say([string]$Text, [string]$Color = 'Gray') { Write-Host $Text -ForegroundColor $Color }
 function Title([string]$Text) { Write-Host ''; Write-Host "━━ $Text" -ForegroundColor Cyan }
 function Ok([string]$Text) { Write-Host "  ✔ $Text" -ForegroundColor Green }
-function Warn([string]$Text) { Write-Host "  ! $Text" -ForegroundColor Yellow }
-function Fail([string]$Text) { Write-Host "  ✖ $Text" -ForegroundColor Red }
+# Что не получилось за этот запуск: попадает в отчёт
+$Script:Problems = @()
+function Warn([string]$Text) { $Script:Problems += $Text; Write-Host "  ! $Text" -ForegroundColor Yellow }
+function Fail([string]$Text) { $Script:Problems += $Text; Write-Host "  ✖ $Text" -ForegroundColor Red }
 
 function Ask([string]$Question, [string]$Default = '') {
   if ($Yes) { return $Default }
@@ -736,7 +738,9 @@ function Invoke-YouTube {
     }
     if (Confirm 'Установить SmartTube (с официального GitHub)?') {
       $apk = Get-Apk 'smarttube' { Get-SmartTubeSource }
-      Install-Apk $apk 'SmartTube' | Out-Null
+      if (Install-Apk $apk 'SmartTube') {
+        Say '    Реклама убирается только в SmartTube: в обычном приложении YouTube она останется. Смотрите через SmartTube.' 'DarkGray'
+      }
     }
   }
 
@@ -956,6 +960,105 @@ function Invoke-Launcher {
   }
 }
 
+# ─── Отчёт ───────────────────────────────────────────────────────────────
+
+# В сообщениях об ошибках бывают адреса, ссылка подписки и пути: в отчёт они не идут
+function Protect-ReportLine([string]$Line) {
+  $t = $Line -replace 'https?://\S+', '<ссылка>'
+  $t = $t -replace '\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b', '<ip>'
+  $t = $t -replace '\b[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}\b', '<mac>'
+  $t = $t -replace '[A-Za-z]:\\[^)\r\n]*', '<папка>'
+  if ($t.Length -gt 200) { $t = $t.Substring(0, 200) + '…' }
+  return $t
+}
+
+# Тот же текст, что у приложения. Только модель, сборка и системные пакеты:
+# ни IP, ни MAC, ни серийного номера, ни сторонних приложений.
+function Get-TvReport {
+  $now = $Script:Info
+  $packages = {
+    param([string]$Command)
+    @((Sh $Command) -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() } | Where-Object { $_ -and $_ -notmatch '[\s:]' })
+  }
+  $system = @(& $packages 'pm list packages -s')
+  $third = @(& $packages 'pm list packages -3').Count
+  $known = @($Script:Db.packages | ForEach-Object { $_.id })
+  $unknown = @($system | Where-Object { $known -notcontains $_ } | Sort-Object)
+  $off = @($now.Disabled | Where-Object { $system -contains $_ } | Sort-Object)
+  # Сторонний главный экран называем только свой: остальные — выбор человека
+  $homes = {
+    param([string]$Command)
+    @((Sh $Command) -split "`n" | ForEach-Object { $_.Trim() } | Where-Object {
+      $_ -match '^[\w.]+/[\w.$]+$' -and ($system -contains $_.Split('/')[0] -or $_.Split('/')[0] -eq $Script:LauncherPackage)
+    })
+  }
+  $homeArgs = '--brief -a android.intent.action.MAIN -c android.intent.category.HOME'
+  $current = @(& $homes "cmd package resolve-activity $homeArgs") | Select-Object -Last 1
+  $candidates = @(& $homes "cmd package query-activities $homeArgs") | Select-Object -Unique
+  $dnsNow = Get-DnsState
+  $dns = if (Test-AdGuardDns $dnsNow) { 'AdGuard DNS' } elseif ($dnsNow.Mode -eq 'hostname') { 'свой частный DNS' } else { Get-DnsTitle $dnsNow }
+  $platforms = @(Get-Platforms | ForEach-Object { $_.name })
+  $names = @($now.Manufacturer, $now.Model | Where-Object { $_ -and $_ -ne 'unknown' })
+  $journal = @(Get-RestorePackages)
+  $none = { param($List) if (@($List).Count) { @($List) -join ', ' } else { 'ничего' } }
+  $head = @(
+    '### Отчёт о телевизоре', ''
+    "- **Собран:** скрипт $($Script:Version)"
+    "- **Телевизор:** $($now.Manufacturer) / $($now.Brand) / $($now.Model), устройство $(Sh 'getprop ro.product.device')"
+    "- **Android:** $($now.Android) (SDK $($now.Sdk)), $($now.AbiList)"
+    "- **Сборка:** $(Sh 'getprop ro.build.fingerprint')"
+    "- **Чип:** $(Sh 'getprop ro.board.platform') / $(Sh 'getprop ro.hardware')"
+    "- **Платформа:** $(if ($platforms.Count) { $platforms -join ', ' } else { 'не распознана' })"
+    "- **Главный экран:** $(if ($current) { $current } else { 'не определён' })"
+    "- **Кандидаты:** $(if (@($candidates).Count) { @($candidates) -join ', ' } else { 'нет данных' })"
+    "- **Приложения:** всего $($now.Installed.Count), системных $($system.Count), сторонних $third"
+    "- **Частный DNS:** $dns"
+    "- **Отключил ЧистыйТВ:** $(& $none $journal)"
+    "- **Отключено на ТВ:** $(& $none $off)"
+    '', '**Что не получилось:**'
+  )
+  if ($Script:Problems.Count) { $head += @($Script:Problems | Select-Object -Last 15 | ForEach-Object { "- $(Protect-ReportLine $_)" }) }
+  else { $head += '- ошибок в этом запуске нет' }
+  $tail = @('', "**Системные пакеты не из базы ($($unknown.Count)):**", '', '```text') + $unknown + @('```')
+  $ask = @('', '**Что случилось:** (опишите своими словами)')
+  return [pscustomobject]@{
+    Title = "Отчёт: $(if ($names.Count) { $names -join ' ' } else { 'Телевизор' }), Android $($now.Android)"
+    Full  = ($head + $tail + $ask) -join "`n"
+    Short = ($head + $ask) -join "`n"
+  }
+}
+
+# Адрес нового issue. Windows не откроет адрес длиннее 2 КБ, поэтому полный текст — в буфере обмена
+function Get-ReportUrl($Report, [int]$Max = 2000) {
+  $paste = 'Вставьте сюда отчёт: он уже в буфере обмена.'
+  $head = "https://github.com/$($Script:Repo)/issues/new?title=$([uri]::EscapeDataString($Report.Title))&body="
+  foreach ($body in @($Report.Full, $Report.Short)) {
+    $url = $head + [uri]::EscapeDataString($body)
+    if ($url.Length -le $Max) { return $url }
+  }
+  return $head + [uri]::EscapeDataString($paste)
+}
+
+function Invoke-Report {
+  Title 'Отчёт о телевизоре'
+  Say '  Модель, сборка, системные пакеты и что не получилось. IP, MAC, серийный номер и ваши приложения в отчёт не попадают.' 'DarkGray'
+  $report = Get-TvReport
+  $dir = Join-Path $WorkDir (Get-TvKey)
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  $file = Join-Path $dir "report-$(Get-Date -Format 'yyyyMMdd-HHmmss').md"
+  Set-Content -Path $file -Value $report.Full -Encoding UTF8
+  Say ''
+  Say $report.Short
+  Say ''
+  Ok "Полный отчёт: $file"
+  if (-not (Confirm 'Открыть новый issue на GitHub? Отчёт скопируется в буфер, отправите его вы сами' $false)) {
+    Say "  Нет аккаунта GitHub? Пришлите этот файл в Telegram $($Script:Author)." 'DarkGray'
+    return
+  }
+  try { Set-Clipboard -Value $report.Full; Ok 'Отчёт скопирован в буфер обмена.' } catch { Warn "Буфер обмена недоступен, возьмите текст из файла $file" }
+  try { Start-Process (Get-ReportUrl $report) } catch { Warn "Браузер не открылся: https://github.com/$($Script:Repo)/issues/new" }
+}
+
 function Show-Finish {
   Title 'Напоследок'
   Say '  Когда закончите, выключите на ТВ «Отладку по сети» и «Отладку по USB»: порт 5555 открыт для всей домашней сети.' 'Yellow'
@@ -971,6 +1074,7 @@ function Show-Menu {
     Say '  3. Новый главный экран без рекламных рядов'
     Say '  4. Блокировка рекламы через DNS'
     Say '  5. Вернуть как было'
+    Say '  6. Отчёт о телевизоре (что-то не получилось? соберёт данные для разработчика)'
     Say '  0. Выход'
     switch (Ask 'Пункт' '1') {
       '1' { Invoke-Clean }
@@ -978,6 +1082,7 @@ function Show-Menu {
       '3' { Invoke-Launcher }
       '4' { Invoke-Dns }
       '5' { Invoke-Restore }
+      '6' { Invoke-Report }
       '0' { return }
       default { Warn 'Нет такого пункта' }
     }
@@ -1011,6 +1116,7 @@ function Main {
     'youtube' { Invoke-YouTube }
     'launcher' { Invoke-Launcher }
     'dns' { Invoke-Dns }
+    'report' { Invoke-Report }
     'info' { }
   }
   Show-Finish
