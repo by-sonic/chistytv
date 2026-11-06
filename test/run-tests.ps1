@@ -109,6 +109,11 @@ $tv = New-Tv $installed @{ refuse = $true }
 $out = Run @('-Action', 'clean', '-Yes')
 Check 'запрет прошивки распознан' ($out -match 'Прошивка не даёт отключать') $out
 
+# 3б. Защищённые пакеты Яндекс ТВ: называем по имени, без «прошивка не даёт» и без стектрейса
+$tv = New-Tv $installed @{ protected = $installed }
+$out = Run @('-Action', 'clean', '-Yes')
+Check 'защищённые пакеты названы по имени' (($out -match 'прошивка защищает этот пакет') -and ($out -notmatch 'Прошивка не даёт отключать') -and ($out -notmatch 'at com\.android')) $out
+
 # 4. Импорт подписки в Happ (приложения уже стоят, сеть не нужна)
 $tv = New-Tv ($installed + @('com.happproxy', 'org.smarttube.stable'))
 $out = Run @('-Action', 'youtube', '-Yes', '-Subscription', 'https://example.com/sub/abc123')

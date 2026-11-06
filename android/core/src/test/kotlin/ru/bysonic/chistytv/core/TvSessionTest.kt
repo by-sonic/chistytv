@@ -178,6 +178,17 @@ class TvSessionTest {
   }
 
   @Test
+  fun `3б защищённые пакеты — по имени и без «прошивка не даёт»`() {
+    val tv = FakeTv(installed).apply { protectedPkgs += installed }
+    val r = run(tv)
+    val result = r.session.cleanDefaults()
+    assertTrue(r.text, r.text.contains("прошивка защищает этот пакет"))
+    assertFalse(r.text, r.text.contains("Прошивка не даёт отключать"))
+    assertFalse(r.text, r.text.contains("\tat com.android"))
+    assertFalse(result.disable!!.refused)
+  }
+
+  @Test
   fun `4 подписка уходит в Happ через happ add`() {
     val tv = FakeTv(installed + listOf("com.happproxy", "org.smarttube.stable"))
     val r = run(tv)
@@ -469,7 +480,7 @@ class TvSessionTest {
     val net = StubNet()
     val r = run(FakeTv(installed), net)
     assertFalse(r.session.happWebImport("1234", "https://example.com/s"))
-    assertTrue(r.session.happWebImport("12345", "https://example.com/s"))
+    assertTrue(r.session.happWebImport("12 345", "https://example.com/s"))
     assertEquals("https://check.happ.su/sendtv/12345", net.posted.single().first)
     assertEquals("""{"data":"aHR0cHM6Ly9leGFtcGxlLmNvbS9z"}""", net.posted.single().second)
   }

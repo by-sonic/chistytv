@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.5'
+$Script:Version = '0.2.6'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -387,6 +387,7 @@ function Get-RestorePackages {
 
 function Disable-Packages($Entries) {
   $done = 0
+  $protected = 0
   foreach ($e in $Entries) {
     # По одному пакету на вызов: в цепочке команд pm может молча остановиться после первой.
     $out = Sh "pm disable-user --user 0 $($e.id)"
@@ -394,13 +395,17 @@ function Disable-Packages($Entries) {
       Add-RestoreLog $e.id
       Ok "$($e.title) ($($e.id))"
       $done++
+    } elseif ($out -match 'protected package') {
+      # Производитель внёс пакет в список защищённых: shell его не отключит, остальным это не мешает
+      Warn "$($e.title) ($($e.id)): прошивка защищает этот пакет, отключить его нельзя."
+      $protected++
     } else {
-      Warn "$($e.id): $out"
+      Warn "$($e.id): $(Get-ShortError $out)"
     }
   }
   $now = (Sh 'pm list packages -d') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() }
   $notApplied = @($Entries | Where-Object { $now -notcontains $_.id })
-  if ($done -eq 0 -and $Entries.Count -gt 0) {
+  if ($done -eq 0 -and $Entries.Count -gt $protected) {
     Fail 'Прошивка не даёт отключать пакеты. Тогда остаётся блокировка рекламы через DNS (пункт меню «DNS»).'
   } elseif ($notApplied.Count) {
     Warn "Не применилось: $(($notApplied | ForEach-Object { $_.id }) -join ', ')"
@@ -713,8 +718,9 @@ function Send-HappSubscription([string]$Sub) {
     Say '  Тогда добавьте вручную: Happ → «+» → вставьте ссылку подписки с пульта.' 'DarkGray'
     return $false
   }
-  $code = Ask 'Код с экрана телевизора'
-  if ($code -notmatch '^\d{5}$') { Fail 'Код — это 5 цифр.'; return $false }
+  # Код часто вводят с пробелом или дефисом, как он разбит на экране
+  $code = (Ask 'Код с экрана телевизора') -replace '\D', ''
+  if ($code -notmatch '^\d{5}$') { Fail 'Код — это 5 цифр с экрана «Web Import» в Happ.'; return $false }
   $body = @{ data = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sub)) } | ConvertTo-Json -Compress
   try {
     Invoke-RestMethod -UseBasicParsing -Method Post -Uri "https://check.happ.su/sendtv/$code" -ContentType 'application/json' -Body $body | Out-Null

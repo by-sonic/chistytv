@@ -39,6 +39,7 @@ class TvSession(
   fun disable(entries: List<PackageEntry>): DisableResult {
     val done = mutableListOf<PackageEntry>()
     val failed = mutableListOf<Pair<PackageEntry, String>>()
+    var protected = 0
     val store = store
     for (e in entries) {
       // По одному пакету на вызов: в цепочке команд pm может молча остановиться после первой
@@ -47,14 +48,19 @@ class TvSession(
         store.record(e.id)
         out.ok("${e.title} (${e.id})")
         done += e
+      } else if (PROTECTED.containsMatchIn(r)) {
+        // Производитель внёс пакет в список защищённых: shell его не отключит, остальным это не мешает
+        out.warn("${e.title} (${e.id}): прошивка защищает этот пакет, отключить его нельзя.")
+        failed += e to r
+        protected++
       } else {
-        out.warn("${e.id}: $r")
+        out.warn("${e.id}: ${shortError(r)}")
         failed += e to r
       }
     }
     val now = TvInfo.parsePackages(adb.shell("pm list packages -d"))
     val notApplied = entries.filter { it.id !in now }
-    val refused = done.isEmpty() && entries.isNotEmpty()
+    val refused = done.isEmpty() && entries.size > protected
     if (refused) {
       out.fail("Прошивка не даёт отключать пакеты. Тогда остаётся блокировка рекламы через DNS.")
     } else if (notApplied.isNotEmpty()) {
@@ -255,9 +261,11 @@ class TvSession(
   }
 
   /** Официальный способ Happ для ТВ: «Web Import» на телевизоре показывает 5-значный код. Ссылка идёт через check.happ.su */
-  fun happWebImport(code: String, sub: String): Boolean {
+  fun happWebImport(input: String, sub: String): Boolean {
+    // Код часто вводят с пробелом или дефисом, как он разбит на экране
+    val code = input.filter { it.isDigit() }
     if (!Regex("^\\d{5}$").matches(code)) {
-      out.fail("Код — это 5 цифр.")
+      out.fail("Код — это 5 цифр с экрана «Web Import» в Happ.")
       return false
     }
     if (!isSubscriptionUrl(sub)) {
@@ -498,6 +506,7 @@ class TvSession(
 
   companion object {
     private val DISABLED = Regex("disabled-user|new state: disabled", RegexOption.IGNORE_CASE)
+    private val PROTECTED = Regex("protected package", RegexOption.IGNORE_CASE)
     private val HOME_NAME = Regex("launcher|tvhome|\\.home$", RegexOption.IGNORE_CASE)
     private val GONE = Regex("Unknown package|doesn't exist|does not exist|not installed", RegexOption.IGNORE_CASE)
     private val NO_SPACE =Regex("INSUFFICIENT_STORAGE|not enough space|No space left", RegexOption.IGNORE_CASE)

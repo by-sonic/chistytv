@@ -54,13 +54,13 @@ class TvConnection(private val keys: AdbKeys, private val deviceName: String) : 
   override fun shell(command: String): String {
     // Команды пишем в журнал только в отладочной сборке: в них бывает ссылка подписки
     if (BuildConfig.DEBUG) android.util.Log.d("ChistyTV", "shell> $command")
-    val stream = manager.openStream("shell:$command")
+    val stream = open("shell:$command")
     return stream.use { s -> readAll(s.openInputStream()).toString(Charsets.UTF_8).replace("\r\n", "\n").trim() }
   }
 
   /** Передача файла по протоколу sync — как `adb push` */
   override fun push(source: File, remotePath: String) {
-    manager.openStream("sync:").use { s: AdbStream ->
+    open("sync:").use { s: AdbStream ->
       val out = s.openOutputStream()
       val input = s.openInputStream()
       val spec = "$remotePath,$MODE_FILE_0644".toByteArray()
@@ -90,6 +90,16 @@ class TvConnection(private val keys: AdbKeys, private val deviceName: String) : 
   override fun close() {
     runCatching { manager.disconnect() }
     address = null
+  }
+
+  /**
+   * Когда телевизор рвёт связь (сон, смена Wi-Fi), libadb помечает соединение закрытым и на следующую команду
+   * бросает IllegalStateException «connect() must be called first». Для приложения это потеря связи.
+   */
+  private fun open(destination: String): AdbStream = try {
+    manager.openStream(destination)
+  } catch (e: IllegalStateException) {
+    throw IOException("связь с телевизором потеряна", e)
   }
 
   private fun header(id: String, n: Int): ByteArray =

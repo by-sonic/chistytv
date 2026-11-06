@@ -31,6 +31,7 @@ switch ($argv[0]) {
     if ($cmd -match '^pm disable-user --user 0 (\S+)$') {
       $p = $Matches[1]
       if ($state.refuse) { "java.lang.SecurityException: Shell cannot change component state for $p"; return }
+      if (@($state.protected) -contains $p) { "Exception occurred while executing 'disable-user':"; "java.lang.SecurityException: Cannot disable a protected package: $p"; "`tat com.android.server.pm.PackageManagerService.setEnabledSetting(PackageManagerService.java:21580)"; return }
       if ($state.installed -notcontains $p) { "Error: Unknown package: $p"; return }
       $state.disabled = @($state.disabled) + $p | Select-Object -Unique
       Save

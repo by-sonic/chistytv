@@ -44,6 +44,8 @@ class FakeTv(
 
   /** Пакеты, которые прошивка не даёт включить обратно */
   val refuseEnable = mutableSetOf<String>()
+  /** Пакеты из списка защищённых у производителя (Яндекс ТВ 2025–2026) */
+  val protectedPkgs = mutableSetOf<String>()
   var freeMb: Long? = null
   var cacheMb: Long = 0
   var needMb: Long? = null
@@ -74,6 +76,7 @@ class FakeTv(
     Regex("^pm disable-user --user 0 (\\S+)$").find(c)?.let {
       val p = it.groupValues[1]
       if (refuse) return "java.lang.SecurityException: Shell cannot change component state for $p"
+      if (p in protectedPkgs) return "Exception occurred while executing 'disable-user':\njava.lang.SecurityException: Cannot disable a protected package: $p\n\tat com.android.server.pm.PackageManagerService.setEnabledSetting(PackageManagerService.java:21580)"
       if (p !in installed) return "Error: Unknown package: $p"
       if (p !in disabled) disabled += p
       return "Package $p new state: disabled-user"
