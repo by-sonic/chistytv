@@ -18,9 +18,12 @@
 - 4PDA, Sber SBX — https://4pda.to/forum/index.php?showtopic=1044662&st=20 , &st=980
 - Документация Сбера по ADB — https://developers.sber.ru/docs/ru/va/native/testing/adb
 
-## Xiaomi, Haier, TCL, Hisense, Google TV
+## Xiaomi, Haier, TCL, Hisense, Philips, Google TV
 - CleanYourTV (MIT), списки по моделям — https://github.com/Gathin23/cleanyourtv/tree/main/examples
   и разбор ловушек — https://github.com/Gathin23/cleanyourtv/blob/main/docs/TROUBLESHOOTING.md
+- CleanYourTV, Philips на плате PH0M_EA_T32 (Android 11 и 14, восемь телевизоров) —
+  https://github.com/Gathin23/cleanyourtv/tree/main/examples/philips-50pud7406 ; также `philips-55oled707`,
+  `philips-55pus7503` и https://github.com/Gathin23/cleanyourtv/blob/main/docs/devices/philips-55puk7100.md
 - Хабр, Xiaomi на Android 11 — https://habr.com/ru/articles/1044486/
 - Universal Android Debloater NG (описания и риски пакетов) —
   https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation
