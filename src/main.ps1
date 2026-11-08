@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.6'
+$Script:Version = '0.2.7'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -580,6 +580,7 @@ function Get-ApkCertHashes([string]$File) {
 # Подпись проверяем у любого файла, скачанного и сохранённого: перед установкой, каждый раз
 function Get-Apk([string]$Key, [scriptblock]$Resolve) {
   $file = Get-ApkFile $Key $Resolve
+  if (-not $file) { return $null }
   $pin = $Script:ApkPins[$Key]
   if ($pin -and (Get-ApkCertHashes $file) -notcontains $pin) {
     Remove-Item $file -Force
@@ -599,12 +600,25 @@ function Get-ApkFile([string]$Key, [scriptblock]$Resolve) {
     if (-not $file.EndsWith('.apk')) { $file += '.apk' }
     if (-not (Test-Path $file)) {
       Say "  Скачиваю $($src.Name)…" 'DarkGray'
-      Invoke-WebRequest -UseBasicParsing -Uri $src.Url -OutFile $file
+      try { Invoke-WebRequest -UseBasicParsing -Uri $src.Url -OutFile $file }
+      catch { Remove-Item $file -Force -ErrorAction SilentlyContinue; throw }
     }
     return $file
   } catch {
     if ($cached) { Warn "Нет связи с GitHub, беру сохранённый $($cached.Name)"; return $cached.FullName }
-    throw
+    # GitHub у части провайдеров не открывается: файл, скачанный вручную, берём из «Загрузок».
+    # Источник не важен — подпись издателя Get-Apk сверяет сама.
+    $downloads = Join-Path $env:USERPROFILE 'Downloads'
+    $manual = Get-ChildItem $downloads -Filter "$Key*.apk" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($manual) {
+      Warn "Нет связи с GitHub, беру $($manual.Name) из «Загрузок»"
+      Copy-Item $manual.FullName $cache -Force
+      return (Join-Path $cache $manual.Name)
+    }
+    Fail "Не удалось скачать с GitHub: $($_.Exception.Message)"
+    Say "  Скачайте APK любым способом (через VPN или мобильный интернет) и положите в «Загрузки» или в $cache," 'White'
+    Say "  имя файла должно начинаться с «$Key». Подпись издателя проверю сам. Потом запустите пункт снова." 'DarkGray'
+    return $null
   }
 }
 

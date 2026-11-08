@@ -267,6 +267,23 @@ $want = ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().Compu
 Check 'сертификат читается из блока подписи' ((Get-ApkCertHashes $signed) -contains $want)
 Check 'файл без подписи не проходит' (@(Get-ApkCertHashes $apk).Count -eq 0)
 
+# 12в2. GitHub не открывается: берём APK из «Загрузок», а без него — подсказка вместо падения скрипта
+. ([scriptblock]::Create(($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -eq 'Get-ApkFile' }, $false) | Select-Object -First 1).Extent.Text))
+function Warn($t) { $Script:said += "$t`n" }
+function Fail($t) { $Script:said += "$t`n" }
+function Say($t, $c) { $Script:said += "$t`n" }
+$WorkDir = Join-Path $tmp 'nogithub'
+$realProfile = $env:USERPROFILE
+$env:USERPROFILE = Join-Path $tmp 'profile'
+New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE 'Downloads') | Out-Null
+$Script:said = ''
+$got = Get-ApkFile 'ltvlauncher' { throw 'Unable to connect to the remote server' }
+Check 'без GitHub и без файла — подсказка, а не исключение' (($null -eq $got) -and ($Script:said -match 'Загрузки')) $Script:said
+Copy-Item $signed (Join-Path $env:USERPROFILE 'Downloads\LTvLauncher-armeabi-v7a-release.apk')
+$got = Get-ApkFile 'ltvlauncher' { throw 'Unable to connect to the remote server' }
+Check 'без GitHub — APK из «Загрузок» попадает в кэш' (($got -like "*apk\LTvLauncher-armeabi-v7a-release.apk") -and (Test-Path $got)) "$got"
+$env:USERPROFILE = $realProfile
+
 # 12г. База не может обойти защиту: даже с override_protect защищённый пакет не попадает в план
 $src = [IO.File]::ReadAllText((Join-Path $root 'src\main.ps1'), [Text.Encoding]::UTF8)
 Check 'в скрипте нет обхода защиты из базы' ($src -notmatch 'override_protect')
