@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.7'
+$Script:Version = '0.2.8'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -391,6 +391,8 @@ function Disable-Packages($Entries) {
   foreach ($e in $Entries) {
     # По одному пакету на вызов: в цепочке команд pm может молча остановиться после первой.
     $out = Sh "pm disable-user --user 0 $($e.id)"
+    # Прошивка Homatics на Android 14 отвечает «This command is illegal!» на --user 0, а без него отключает
+    if ($out -match 'command is illegal') { $out = Sh "pm disable-user $($e.id)" }
     if ($out -match 'disabled-user|new state: disabled') {
       Add-RestoreLog $e.id
       Ok "$($e.title) ($($e.id))"
@@ -1035,6 +1037,11 @@ function Get-TvReport {
     "- **Частный DNS:** $dns"
     "- **Отключил ЧистыйТВ:** $(& $none $journal)"
     "- **Отключено на ТВ:** $(& $none $off)"
+  )
+  # Отключал ЧистыйТВ, назад не возвращали, а пакет снова включён: его включила прошивка или магазин
+  $back = @($journal | Where-Object { $now.Installed -contains $_ -and $now.Disabled -notcontains $_ })
+  if ($back.Count) { $head += "- **Включились снова (не через ЧистыйТВ):** $($back -join ', ')" }
+  $head += @(
     '', '**Что не получилось:**'
   )
   if ($Script:Problems.Count) { $head += @($Script:Problems | Select-Object -Last 15 | ForEach-Object { "- $(Protect-ReportLine $_)" }) }

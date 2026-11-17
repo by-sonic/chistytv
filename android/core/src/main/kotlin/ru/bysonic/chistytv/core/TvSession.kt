@@ -43,7 +43,9 @@ class TvSession(
     val store = store
     for (e in entries) {
       // По одному пакету на вызов: в цепочке команд pm может молча остановиться после первой
-      val r = adb.shell("pm disable-user --user 0 ${e.id}")
+      var r = adb.shell("pm disable-user --user 0 ${e.id}")
+      // Прошивка Homatics на Android 14 отвечает «This command is illegal!» на --user 0, а без него отключает
+      if (ILLEGAL.containsMatchIn(r)) r = adb.shell("pm disable-user ${e.id}")
       if (DISABLED.containsMatchIn(r)) {
         store.record(e.id)
         out.ok("${e.title} (${e.id})")
@@ -418,6 +420,9 @@ class TvSession(
       add("- **Частный DNS:** $dns")
       add("- **Отключил ЧистыйТВ:** ${store.recorded().joinToString(", ").ifEmpty { "ничего" }}")
       add("- **Отключено на ТВ:** ${off.joinToString(", ").ifEmpty { "ничего" }}")
+      // Отключал ЧистыйТВ, назад не возвращали, а пакет снова включён: его включила прошивка или магазин
+      val back = store.recorded().filter { it in now.installed && it !in now.disabled }
+      if (back.isNotEmpty()) add("- **Включились снова (не через ЧистыйТВ):** ${back.joinToString(", ")}")
       add("")
       add("**Что не получилось:**")
       if (problems.isEmpty()) add("- ошибок в этом запуске нет")
@@ -507,6 +512,7 @@ class TvSession(
   companion object {
     private val DISABLED = Regex("disabled-user|new state: disabled", RegexOption.IGNORE_CASE)
     private val PROTECTED = Regex("protected package", RegexOption.IGNORE_CASE)
+    private val ILLEGAL = Regex("command is illegal", RegexOption.IGNORE_CASE)
     private val HOME_NAME = Regex("launcher|tvhome|\\.home$", RegexOption.IGNORE_CASE)
     private val GONE = Regex("Unknown package|doesn't exist|does not exist|not installed", RegexOption.IGNORE_CASE)
     private val NO_SPACE =Regex("INSUFFICIENT_STORAGE|not enough space|No space left", RegexOption.IGNORE_CASE)

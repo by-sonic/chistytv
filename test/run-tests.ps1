@@ -114,6 +114,19 @@ $tv = New-Tv $installed @{ protected = $installed }
 $out = Run @('-Action', 'clean', '-Yes')
 Check 'защищённые пакеты названы по имени' (($out -match 'прошивка защищает этот пакет') -and ($out -notmatch 'Прошивка не даёт отключать') -and ($out -notmatch 'at com\.android')) $out
 
+# 3в. Homatics на Android 14: с --user 0 «This command is illegal!», без него отключается
+$tv = New-Tv $installed @{ user_flag_illegal = $true }
+$out = Run @('-Action', 'clean', '-Yes')
+Check 'Homatics: отключено без --user 0' ((@((State $tv).disabled).Count -gt 0) -and ($out -notmatch 'Прошивка не даёт отключать')) $out
+
+# 3г. Отчёт: пакет, отключённый ЧистымТВ, включился мимо него
+Set-State $tv 'disabled' @(@((State $tv).disabled) | Select-Object -Skip 1)
+$back = @((State $tv).installed | Where-Object { @((State $tv).disabled) -notcontains $_ })
+$out = Run @('-Action', 'report', '-Yes')
+$rep = Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'report-*.md' | Sort-Object LastWriteTime | Select-Object -Last 1
+$text = if ($rep) { [IO.File]::ReadAllText($rep.FullName, [Text.Encoding]::UTF8) } else { '' }
+Check 'отчёт: включившийся снова пакет виден' ($text -match 'Включились снова \(не через ЧистыйТВ\)') $text
+
 # 4. Импорт подписки в Happ (приложения уже стоят, сеть не нужна)
 $tv = New-Tv ($installed + @('com.happproxy', 'org.smarttube.stable'))
 $out = Run @('-Action', 'youtube', '-Yes', '-Subscription', 'https://example.com/sub/abc123')

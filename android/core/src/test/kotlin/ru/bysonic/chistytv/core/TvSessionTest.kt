@@ -189,6 +189,25 @@ class TvSessionTest {
   }
 
   @Test
+  fun `3в Homatics — без --user 0, если с ним «command is illegal»`() {
+    val tv = FakeTv(installed).apply { userFlagIllegal = true }
+    val r = run(tv)
+    val result = r.session.cleanDefaults()
+    assertFalse(r.text, result.disable!!.refused)
+    assertTrue(r.text, safe.all { it in tv.disabled })
+  }
+
+  @Test
+  fun `отчёт — пакет включился снова мимо ЧистогоТВ`() {
+    val tv = FakeTv(installed)
+    val r = run(tv)
+    r.session.cleanDefaults()
+    tv.disabled.remove(safe[0])
+    val rep = r.session.report("приложение", emptyList())
+    assertTrue(rep.full, rep.full.contains("Включились снова (не через ЧистыйТВ):** ${safe[0]}"))
+  }
+
+  @Test
   fun `4 подписка уходит в Happ через happ add`() {
     val tv = FakeTv(installed + listOf("com.happproxy", "org.smarttube.stable"))
     val r = run(tv)
