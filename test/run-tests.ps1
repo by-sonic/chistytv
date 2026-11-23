@@ -252,9 +252,21 @@ foreach ($n in 'Protect-ReportLine', 'Get-ReportUrl') {
 }
 $clean = (Protect-ReportLine 'к 192.168.1.13:5555, MAC 8c:35:92:28:64:87, https://sub.example.com/abc?t=SECRET, C:\Users\Иван Петров\work (ни на ТВ)')
 Check 'отчёт: адреса, ссылки и пути убраны' (($clean -notmatch '192\.168|8c:35|SECRET|Иван|Петров') -and ($clean -match '<ip>') -and ($clean -match '<mac>') -and ($clean -match '<ссылка>') -and ($clean -match '<папка>')) $clean
+Check 'отчёт: IPv6 и порт ADB убраны' ((Protect-ReportLine 'ADB [2001:db8::1234]:5555, fe80::1%wlan0, MAC 8c:35:92:28:64:87') -eq 'ADB <ip>, <ip>, MAC <mac>')
 $Script:Repo = 'by-sonic/chistytv'
-$long = [pscustomobject]@{ Title = 'Отчёт: ТВ'; Full = ('ошибка ' * 2000); Short = ('ошибка ' * 2000) }
-Check 'отчёт: адрес не длиннее 2 КБ' ((Get-ReportUrl $long).Length -le 2000)
+$long = [pscustomobject]@{
+  Title = 'Отчёт: ТВ'
+  Full = ('ошибка ' * 10000)
+  Short = ('ошибка ' * 2000)
+  Summary = @('- **Собран:** скрипт 0.2.9', ('ошибка ' * 300), "- **Последнее сообщение:** $clean")
+}
+$url = Get-ReportUrl $long
+$body = [uri]::UnescapeDataString(($url -split '&body=', 2)[1])
+Check 'отчёт: адрес не длиннее 2 КБ' ($url.Length -le 2000) $url
+Check 'отчёт: краткая диагностика в адресе' ($body.Contains('скрипт 0.2.9') -and $body.Contains('Что случилось') -and $body.Contains('<ip>') -and -not $body.Contains('SECRET')) $body
+Check 'отчёт: слишком длинная строка не вытесняет следующие' (-not $body.Contains('ошибка ошибка')) $body
+$long.Short = 'Короткий отчёт'
+Check 'отчёт: обычный короткий текст сохраняется' ((Get-ReportUrl $long).EndsWith([uri]::EscapeDataString($long.Short)))
 
 # 12в. Подпись издателя: читаем сертификат из блока подписи APK
 function New-SignedApk([string]$Path, [byte[]]$Cert) {

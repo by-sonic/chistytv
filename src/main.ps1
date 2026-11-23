@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.8'
+$Script:Version = '0.2.9'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -987,8 +987,10 @@ function Invoke-Launcher {
 # В сообщениях об ошибках бывают адреса, ссылка подписки и пути: в отчёт они не идут
 function Protect-ReportLine([string]$Line) {
   $t = $Line -replace 'https?://\S+', '<ссылка>'
+  $t = $t -replace '(?<![\w:])[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}(?![\w:])', '<mac>'
+  $ipv6 = '(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f:.]*(?:%[\w.-]+)?'
+  $t = $t -replace ('\[{0}\](?::\d+)?|(?<![\w:]){0}(?![\w:])' -f $ipv6), '<ip>'
   $t = $t -replace '\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b', '<ip>'
-  $t = $t -replace '\b[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}\b', '<mac>'
   $t = $t -replace '[A-Za-z]:\\[^)\r\n]*', '<папка>'
   if ($t.Length -gt 200) { $t = $t.Substring(0, 200) + '…' }
   return $t
@@ -1023,47 +1025,72 @@ function Get-TvReport {
   $names = @($now.Manufacturer, $now.Model | Where-Object { $_ -and $_ -ne 'unknown' })
   $journal = @(Get-RestorePackages)
   $none = { param($List) if (@($List).Count) { @($List) -join ', ' } else { 'ничего' } }
+  $versionLine = "- **Собран:** скрипт $($Script:Version)"
+  $androidLine = "- **Android:** $($now.Android) (SDK $($now.Sdk)), $($now.AbiList)"
+  $platformLine = "- **Платформа:** $(if ($platforms.Count) { $platforms -join ', ' } else { 'не распознана' })"
+  $dnsLine = "- **Частный DNS:** $dns"
+  $problems = @($Script:Problems | Select-Object -Last 15 | ForEach-Object { Protect-ReportLine $_ })
+  if (-not $problems.Count) { $problems = @('ошибок в этом запуске нет') }
   $head = @(
     '### Отчёт о телевизоре', ''
-    "- **Собран:** скрипт $($Script:Version)"
+    $versionLine
     "- **Телевизор:** $($now.Manufacturer) / $($now.Brand) / $($now.Model), устройство $(Sh 'getprop ro.product.device')"
-    "- **Android:** $($now.Android) (SDK $($now.Sdk)), $($now.AbiList)"
+    $androidLine
     "- **Сборка:** $(Sh 'getprop ro.build.fingerprint')"
     "- **Чип:** $(Sh 'getprop ro.board.platform') / $(Sh 'getprop ro.hardware')"
-    "- **Платформа:** $(if ($platforms.Count) { $platforms -join ', ' } else { 'не распознана' })"
+    $platformLine
     "- **Главный экран:** $(if ($current) { $current } else { 'не определён' })"
     "- **Кандидаты:** $(if (@($candidates).Count) { @($candidates) -join ', ' } else { 'нет данных' })"
     "- **Приложения:** всего $($now.Installed.Count), системных $($system.Count), сторонних $third"
-    "- **Частный DNS:** $dns"
+    $dnsLine
     "- **Отключил ЧистыйТВ:** $(& $none $journal)"
     "- **Отключено на ТВ:** $(& $none $off)"
   )
   # Отключал ЧистыйТВ, назад не возвращали, а пакет снова включён: его включила прошивка или магазин
   $back = @($journal | Where-Object { $now.Installed -contains $_ -and $now.Disabled -notcontains $_ })
   if ($back.Count) { $head += "- **Включились снова (не через ЧистыйТВ):** $($back -join ', ')" }
-  $head += @(
-    '', '**Что не получилось:**'
-  )
-  if ($Script:Problems.Count) { $head += @($Script:Problems | Select-Object -Last 15 | ForEach-Object { "- $(Protect-ReportLine $_)" }) }
-  else { $head += '- ошибок в этом запуске нет' }
+  $head += @('', '**Что не получилось:**') + @($problems | ForEach-Object { "- $_" })
   $tail = @('', "**Системные пакеты не из базы ($($unknown.Count)):**", '', '```text') + $unknown + @('```')
   $ask = @('', '**Что случилось:** (опишите своими словами)')
   return [pscustomobject]@{
     Title = "Отчёт: $(if ($names.Count) { $names -join ' ' } else { 'Телевизор' }), Android $($now.Android)"
     Full  = ($head + $tail + $ask) -join "`n"
     Short = ($head + $ask) -join "`n"
+    Summary = @($versionLine, $androidLine, $platformLine, $dnsLine, "- **Последнее сообщение:** $($problems[-1])")
   }
 }
 
 # Адрес нового issue. Windows не откроет адрес длиннее 2 КБ, поэтому полный текст — в буфере обмена
 function Get-ReportUrl($Report, [int]$Max = 2000) {
+  $issue = "https://github.com/$($Script:Repo)/issues/new"
   $paste = 'Вставьте сюда отчёт: он уже в буфере обмена.'
-  $head = "https://github.com/$($Script:Repo)/issues/new?title=$([uri]::EscapeDataString($Report.Title))&body="
-  foreach ($body in @($Report.Full, $Report.Short)) {
-    $url = $head + [uri]::EscapeDataString($body)
+  if ($Report.Title.Length -gt ($Max - $issue.Length)) { return $issue }
+  $head = "$($issue)?title=$([uri]::EscapeDataString($Report.Title))&body="
+  $encode = {
+    param([string]$Body)
+    if ($Body.Length -gt ($Max - $head.Length)) { return }
+    $url = $head + [uri]::EscapeDataString($Body)
     if ($url.Length -le $Max) { return $url }
   }
-  return $head + [uri]::EscapeDataString($paste)
+  foreach ($body in @($Report.Full, $Report.Short)) {
+    $url = & $encode $body
+    if ($url) { return $url }
+  }
+  $summary = "Краткий отчёт. Чтобы приложить полный, замените этот текст содержимым буфера обмена.`n"
+  $ask = "`n`n**Что случилось:** (опишите своими словами)"
+  $summaryUrl = $null
+  foreach ($line in $Report.Summary) {
+    $candidate = "$summary`n$line"
+    $url = & $encode ($candidate + $ask)
+    if ($url) {
+      $summary = $candidate
+      $summaryUrl = $url
+    }
+  }
+  if ($summaryUrl) { return $summaryUrl }
+  $url = & $encode $paste
+  if ($url) { return $url }
+  return $issue
 }
 
 function Invoke-Report {
@@ -1082,7 +1109,10 @@ function Invoke-Report {
     Say "  Нет аккаунта GitHub? Пришлите этот файл в Telegram $($Script:Author)." 'DarkGray'
     return
   }
-  try { Set-Clipboard -Value $report.Full; Ok 'Отчёт скопирован в буфер обмена.' } catch { Warn "Буфер обмена недоступен, возьмите текст из файла $file" }
+  try {
+    Set-Clipboard -Value $report.Full -ErrorAction Stop
+    Ok 'Полный отчёт скопирован. Если GitHub покажет краткий отчёт или пустое описание, вставьте полный отчёт в поле описания.'
+  } catch { Warn "Буфер обмена недоступен, возьмите текст из файла $file" }
   try { Start-Process (Get-ReportUrl $report) } catch { Warn "Браузер не открылся: https://github.com/$($Script:Repo)/issues/new" }
 }
 

@@ -382,7 +382,7 @@ fun ReportScreen(vm: MainViewModel) {
         val opened = runCatching {
           context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(r.url())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }.isSuccess
-        note = if (opened) "Полный отчёт в буфере обмена. Если на GitHub его не видно, вставьте в поле текста." else "Браузер не открылся. Отчёт в буфере обмена: пришлите его в Telegram @sonic_h1."
+        note = if (opened) "Полный отчёт в буфере обмена. Если GitHub покажет краткий отчёт или пустое описание, вставьте полный отчёт в поле описания." else "Браузер не открылся. Отчёт в буфере обмена: пришлите его в Telegram @sonic_h1."
       }, Modifier.fillMaxWidth(), Icons.Rounded.BugReport)
       GhostButton("Скопировать для Telegram @sonic_h1", {
         copy(r.full)

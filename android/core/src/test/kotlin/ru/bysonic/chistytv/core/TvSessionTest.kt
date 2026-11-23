@@ -164,8 +164,17 @@ class TvSessionTest {
     assertTrue(full.url().contains("x".repeat(500)))
     val long = TvReport("Отчёт: ТВ", cyr.repeat(30), "короткий")
     assertTrue("не влез полный — короткий", long.url().length <= TvReport.MAX_URL && long.url().endsWith(java.net.URLEncoder.encode("короткий", "UTF-8")))
-    val huge = TvReport("Отчёт: ТВ", cyr.repeat(30), cyr.repeat(30))
-    assertTrue("не влез и короткий — просьба вставить", huge.url().length <= TvReport.MAX_URL)
+    val tv = reportTv()
+    val problems = List(14) { "Длинное сообщение об ошибке. ".repeat(15) } +
+      "Подписка https://sub.example.com/abc?token=SECRET на 192.168.1.13:5555 не принята"
+    val report = run(tv).session.report("приложение 1.0.8", problems)
+    val url = report.url(2000)
+    val body = java.net.URLDecoder.decode(url.substringAfter("&body="), "UTF-8")
+    assertTrue(url, url.length <= 2000)
+    assertTrue(body, body.contains("Краткий отчёт") && body.contains("приложение 1.0.8") && body.contains("Что случилось"))
+    assertTrue(body, body.contains("<ссылка>") && body.contains("<ip>"))
+    assertFalse(body, body.contains("SECRET") || body.contains("192.168.1.13") || body.contains("Длинное сообщение"))
+    assertEquals("ADB <ip>, <ip>, MAC <mac>", TvReport.scrub("ADB [2001:db8::1234]:5555, fe80::1%wlan0, MAC 8c:35:92:28:64:87"))
   }
 
   @Test

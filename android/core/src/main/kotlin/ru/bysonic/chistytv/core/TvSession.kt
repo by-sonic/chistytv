@@ -405,19 +405,24 @@ class TvSession(
       Regex("^[\\w.]+/[\\w.$]+$").matches(it) && it.substringBefore('/').let { p -> p in system || p == LAUNCHER_PACKAGE }
     }
     val dns = dnsState().let { if (it.enabled) "AdGuard DNS" else if (it.mode == "hostname") "свой частный DNS" else it.title }
+    val versionLine = "- **Собран:** $tool"
+    val androidLine = "- **Android:** ${now.android} (SDK ${now.sdk}), ${now.abiList}"
+    val platformLine = "- **Платформа:** ${platforms.joinToString(", ") { it.name }.ifEmpty { "не распознана" }}"
+    val dnsLine = "- **Частный DNS:** $dns"
+    val problemLines = problems.takeLast(15).map { TvReport.scrub(it) }.ifEmpty { listOf("ошибок в этом запуске нет") }
     val head = buildList {
       add("### Отчёт о телевизоре")
       add("")
-      add("- **Собран:** $tool")
+      add(versionLine)
       add("- **Телевизор:** ${now.manufacturer} / ${now.brand} / ${now.model}, устройство ${prop("ro.product.device")}")
-      add("- **Android:** ${now.android} (SDK ${now.sdk}), ${now.abiList}")
+      add(androidLine)
       add("- **Сборка:** ${prop("ro.build.fingerprint")}")
       add("- **Чип:** ${prop("ro.board.platform")} / ${prop("ro.hardware")}")
-      add("- **Платформа:** ${platforms.joinToString(", ") { it.name }.ifEmpty { "не распознана" }}")
+      add(platformLine)
       add("- **Главный экран:** ${homes("cmd package resolve-activity $homeArgs").lastOrNull() ?: "не определён"}")
       add("- **Кандидаты:** ${homes("cmd package query-activities $homeArgs").distinct().joinToString(", ").ifEmpty { "нет данных" }}")
       add("- **Приложения:** всего ${now.installed.size}, системных ${system.size}, сторонних $third")
-      add("- **Частный DNS:** $dns")
+      add(dnsLine)
       add("- **Отключил ЧистыйТВ:** ${store.recorded().joinToString(", ").ifEmpty { "ничего" }}")
       add("- **Отключено на ТВ:** ${off.joinToString(", ").ifEmpty { "ничего" }}")
       // Отключал ЧистыйТВ, назад не возвращали, а пакет снова включён: его включила прошивка или магазин
@@ -425,12 +430,16 @@ class TvSession(
       if (back.isNotEmpty()) add("- **Включились снова (не через ЧистыйТВ):** ${back.joinToString(", ")}")
       add("")
       add("**Что не получилось:**")
-      if (problems.isEmpty()) add("- ошибок в этом запуске нет")
-      problems.takeLast(15).forEach { add("- ${TvReport.scrub(it)}") }
+      problemLines.forEach { add("- $it") }
     }
     val tail = listOf("", "**Системные пакеты не из базы (${unknown.size}):**", "", "```text") + unknown + "```"
     val ask = listOf("", "**Что случилось:** (опишите своими словами)")
-    return TvReport("Отчёт: ${now.title}, Android ${now.android}", (head + tail + ask).joinToString("\n"), (head + ask).joinToString("\n"))
+    return TvReport(
+      title = "Отчёт: ${now.title}, Android ${now.android}",
+      full = (head + tail + ask).joinToString("\n"),
+      short = (head + ask).joinToString("\n"),
+      summary = listOf(versionLine, androidLine, platformLine, dnsLine, "- **Последнее сообщение:** ${problemLines.last()}"),
+    )
   }
 
   private fun prop(name: String) = adb.shell("getprop $name").trim()
