@@ -75,7 +75,14 @@ def main():
     print("adbd over emulator LAN loopback endpoint, existing shell:", shell("getprop ro.adb.secure"))
     # Open a real adbd TCP listener on the test TV. The emulator host port 5555 is its separate qemu transport.
     print(adb("tcpip", "15555"), flush=True)
-    adb("wait-for-device")
+    time.sleep(3)
+    for _ in range(40):
+        try:
+            if shell("getprop service.adb.tcp.port") == "15555":
+                break
+        except subprocess.CalledProcessError:
+            pass
+        time.sleep(1)
     assert shell("getprop service.adb.tcp.port") == "15555"
     time.sleep(2)
     print("Listener diagnostic:", shell("ss -ltn 2>/dev/null || netstat -ln 2>/dev/null || true")[:300], flush=True)
