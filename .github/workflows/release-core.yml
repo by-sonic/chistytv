@@ -1,0 +1,43 @@
+name: Offline release core and published launcher on TV
+on:
+  push:
+    branches: [qa/embedded-clean-home]
+    paths: ['qa/ReleasedBundleTest.kt', '.github/workflows/release-core.yml']
+permissions:
+  contents: read
+jobs:
+  home:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 447c62f3f56072c7eb94fa06ab2333350caefcf6
+          path: candidate
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Get the public release and attach integration test to exact release source
+        run: |
+          curl -fsSL --retry 3 https://github.com/by-sonic/chistytv/releases/download/android-v1.0.10/ChistyTV.apk -o client.apk
+          echo 'f3424cf13e3e5a6032875cb022d39c24fd7a57b8b1bd105df3881e11c092211f  client.apk' | sha256sum -c -
+          cp qa/ReleasedBundleTest.kt candidate/android/core/src/test/kotlin/ru/bysonic/chistytv/core/
+          bash candidate/android/gradlew -p candidate/android :core:testClasses --console=plain
+      - name: Enable the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86
+          target: android-tv
+          script: CHISTYTV_PACKAGE=$PWD/client.apk bash candidate/android/gradlew -p candidate/android :core:test --tests '*ReleasedBundleTest*' --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-release-core-test
+          path: candidate/android/core/build/test-results/test/*.xml
