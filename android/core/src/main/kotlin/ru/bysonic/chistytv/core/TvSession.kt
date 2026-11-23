@@ -265,9 +265,9 @@ class TvSession(
   /** Официальный способ Happ для ТВ: «Web Import» на телевизоре показывает 5-значный код. Ссылка идёт через check.happ.su */
   fun happWebImport(input: String, sub: String): Boolean {
     // Код часто вводят с пробелом или дефисом, как он разбит на экране
-    val code = input.filter { it.isDigit() }
-    if (!Regex("^\\d{5}$").matches(code)) {
-      out.fail("Код — это 5 цифр с экрана «Web Import» в Happ.")
+    val code = happCode(input)
+    if (code == null) {
+      out.fail("Введите 5 символов (латинские буквы или цифры) с экрана «Web Import» в Happ.")
       return false
     }
     if (!isSubscriptionUrl(sub)) {
@@ -519,6 +519,9 @@ class TvSession(
   }
 
   companion object {
+    fun happCode(input: String): String? =
+      input.replace(" ", "").replace("-", "").takeIf { it.matches(Regex("[A-Za-z0-9]{5}")) }
+
     private val DISABLED = Regex("disabled-user|new state: disabled", RegexOption.IGNORE_CASE)
     private val PROTECTED = Regex("protected package", RegexOption.IGNORE_CASE)
     private val ILLEGAL = Regex("command is illegal", RegexOption.IGNORE_CASE)

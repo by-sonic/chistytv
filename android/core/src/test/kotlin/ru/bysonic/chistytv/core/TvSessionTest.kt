@@ -504,13 +504,19 @@ class TvSessionTest {
   }
 
   @Test
-  fun `запасной импорт Happ — 5 цифр и ссылка в base64`() {
+  fun `запасной импорт Happ сохраняет код получателя и отправляет ссылку в base64`() {
     val net = StubNet()
     val r = run(FakeTv(installed), net)
-    assertFalse(r.session.happWebImport("1234", "https://example.com/s"))
-    assertTrue(r.session.happWebImport("12 345", "https://example.com/s"))
-    assertEquals("https://check.happ.su/sendtv/12345", net.posted.single().first)
-    assertEquals("""{"data":"aHR0cHM6Ly9leGFtcGxlLmNvbS9z"}""", net.posted.single().second)
+    for (input in listOf("1234", "X12345", "12/345", "12Ж34")) {
+      assertFalse(input, r.session.happWebImport(input, "https://example.com/s"))
+    }
+    assertTrue(net.posted.isEmpty())
+    for ((input, uid) in listOf("QWET5" to "QWET5", "qW-eT5" to "qWeT5", "12 345" to "12345")) {
+      assertTrue(input, r.session.happWebImport(input, "https://example.com/s"))
+      assertEquals("https://check.happ.su/sendtv/$uid", net.posted.last().first)
+      assertEquals("""{"data":"aHR0cHM6Ly9leGFtcGxlLmNvbS9z"}""", net.posted.last().second)
+    }
+    assertEquals(3, net.posted.size)
   }
 
   @Test

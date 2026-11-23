@@ -216,11 +216,11 @@ fun YouTubeScreen(vm: MainViewModel) {
         GlassCard(Modifier.fillMaxWidth(), border = SolidColor(C.Warn.copy(alpha = 0.4f))) {
           Text("Запасной способ Happ для ТВ", style = MaterialTheme.typography.titleMedium, color = C.Text)
           Spacer(Modifier.height(6.dp))
-          Text("В Happ на телевизоре выберите «Web Import» — появится 5-значный код. Ссылка подписки при этом пройдёт через сервер Happ (check.happ.su).", style = MaterialTheme.typography.bodyMedium, color = C.TextDim)
+          Text("В Happ на телевизоре выберите «Web Import» — появится код из пяти латинских букв или цифр. Ссылка подписки при этом пройдёт через сервер Happ (check.happ.su).", style = MaterialTheme.typography.bodyMedium, color = C.TextDim)
           Spacer(Modifier.height(12.dp))
-          CodeInput(code, { code = it }, length = 5)
+          AppTextField(code, { code = it }, "Код с экрана Happ", KeyboardType.Ascii)
           Spacer(Modifier.height(12.dp))
-          GradientButton("Отправить через сервер Happ", { vm.webImport(code, sub) }, Modifier.fillMaxWidth(), enabled = code.length == 5 && !vm.busy)
+          GradientButton("Отправить через сервер Happ", { vm.webImport(code, sub) }, Modifier.fillMaxWidth(), enabled = TvSession.happCode(code) != null && !vm.busy)
         }
       }
     }

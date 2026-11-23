@@ -268,6 +268,40 @@ Check 'отчёт: слишком длинная строка не вытесн�
 $long.Short = 'Короткий отчёт'
 Check 'отчёт: обычный короткий текст сохраняется' ((Get-ReportUrl $long).EndsWith([uri]::EscapeDataString($long.Short)))
 
+# Проверяем запасной путь, когда прошивка не обрабатывает happ://add/.
+& {
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($main, [ref]$null, [ref]$null)
+  $fn = $ast.Find({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -eq 'Send-HappSubscription' }, $false)
+  . ([scriptblock]::Create($fn.Extent.Text))
+  $Yes = $false
+  function Sh { 'Error: unable to resolve Intent' }
+  function Ok {}
+  function Warn {}
+  function Say {}
+  function Fail {}
+  function Confirm { $true }
+  function Ask { $entered }
+  $requests = New-Object 'System.Collections.Generic.List[object]'
+  function Invoke-RestMethod([switch]$UseBasicParsing, $Method, $Uri, $ContentType, $Body) {
+    $requests.Add(@{ Method = $Method; Uri = $Uri; ContentType = $ContentType; Body = $Body })
+  }
+  foreach ($entered in 'QWET5', 'qW-eT5', '12 345', 'wrong5', 'X12345', '12/345', '12Ж34', '1234') {
+    $requests.Clear()
+    $success = Send-HappSubscription 'https://example.com/s'
+    $expected = switch -CaseSensitive ($entered) {
+      'QWET5' { 'QWET5' }
+      'qW-eT5' { 'qWeT5' }
+      '12 345' { '12345' }
+    }
+    if ($expected) {
+      $req = $requests | Select-Object -First 1
+      Check "Happ Web Import: $entered" ($success -and $requests.Count -eq 1 -and $req.Method -eq 'Post' -and $req.Uri -ceq "https://check.happ.su/sendtv/$expected" -and $req.ContentType -eq 'application/json' -and ($req.Body | ConvertFrom-Json).data -ceq 'aHR0cHM6Ly9leGFtcGxlLmNvbS9z')
+    } else {
+      Check "Happ Web Import: неверный код $entered" ((-not $success) -and $requests.Count -eq 0)
+    }
+  }
+}
+
 # 12в. Подпись издателя: читаем сертификат из блока подписи APK
 function New-SignedApk([string]$Path, [byte[]]$Cert) {
   $u32 = { param($v) [BitConverter]::GetBytes([uint32]$v) }

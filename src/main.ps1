@@ -29,7 +29,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.9'
+$Script:Version = '0.2.10'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -728,15 +728,15 @@ function Send-HappSubscription([string]$Sub) {
   }
   Warn "Happ не принял ссылку напрямую: $((($out -split "`n") | Where-Object { $_ -match 'Error|Exception' } | Select-Object -First 1))"
   if ($Yes) { return $false }
-  Say '  Есть официальный способ Happ для ТВ: в Happ на телевизоре выберите «Web Import» — появится 5-значный код.' 'White'
+  Say '  Есть официальный способ Happ для ТВ: в Happ на телевизоре выберите «Web Import» — появится код из пяти латинских букв или цифр.' 'White'
   Say '  Ссылка подписки при этом пройдёт через сервер Happ (check.happ.su).' 'DarkGray'
   if (-not (Confirm 'Отправить подписку через сервер Happ?')) {
     Say '  Тогда добавьте вручную: Happ → «+» → вставьте ссылку подписки с пульта.' 'DarkGray'
     return $false
   }
   # Код часто вводят с пробелом или дефисом, как он разбит на экране
-  $code = (Ask 'Код с экрана телевизора') -replace '\D', ''
-  if ($code -notmatch '^\d{5}$') { Fail 'Код — это 5 цифр с экрана «Web Import» в Happ.'; return $false }
+  $code = (Ask 'Код с экрана телевизора') -replace '[ -]', ''
+  if ($code -cnotmatch '\A[A-Za-z0-9]{5}\z') { Fail 'Введите 5 символов (латинские буквы или цифры) с экрана «Web Import» в Happ.'; return $false }
   $body = @{ data = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sub)) } | ConvertTo-Json -Compress
   try {
     Invoke-RestMethod -UseBasicParsing -Method Post -Uri "https://check.happ.su/sendtv/$code" -ContentType 'application/json' -Body $body | Out-Null
