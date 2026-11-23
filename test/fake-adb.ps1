@@ -24,6 +24,7 @@ switch ($argv[0]) {
     if ($cmd -eq 'pm list packages') { $state.installed | ForEach-Object { "package:$_" }; return }
     if ($cmd -eq 'pm list packages -s') { @($state.installed) | Where-Object { @($state.third_party) -notcontains $_ } | ForEach-Object { "package:$_" }; return }
     if ($cmd -eq 'pm list packages -3') { @($state.third_party) | Where-Object { $_ } | ForEach-Object { "package:$_" }; return }
+    if ($cmd -eq 'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME' -and $null -ne $state.resolved_components) { @($state.resolved_components); return }
     if ($cmd -match '^cmd package (resolve-activity|query-activities) --brief -a android\.intent\.action\.MAIN -c android\.intent\.category\.HOME$') { 'priority=0 preferredOrder=0'; @($state.home_apps); return }
     if ($cmd -eq 'pm list packages -u') { @($state.installed) + @($state.removed) | Where-Object { $_ } | ForEach-Object { "package:$_" }; return }
     if ($cmd -match '^dumpsys package (\S+)$') { if (@($state.disabled) -contains $Matches[1]) { 'User 0: installed=true enabled=3' } else { 'User 0: installed=true enabled=0' }; return }

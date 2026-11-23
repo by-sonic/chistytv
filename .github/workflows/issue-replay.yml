@@ -5,6 +5,20 @@ on:
 permissions:
   contents: read
 jobs:
+  reports:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replay released PowerShell and real package database
+        run: python -X utf8 qa/replay.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Replay Android report generation
+        working-directory: android
+        run: .\gradlew.bat :core:test --tests '*ReportReplayTest*' --console=plain
   api34:
     runs-on: ubuntu-latest
     timeout-minutes: 25

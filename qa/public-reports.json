@@ -1,0 +1,362 @@
+{
+  "39": {
+    "make": "Haier",
+    "brand": "Haier",
+    "model": "Haier Android TV FF Pro",
+    "sdk": "34",
+    "release": "14",
+    "home": "com.google.android.tvlauncher/.MainActivity",
+    "candidates": [
+      "com.google.android.tvlauncher/.MainActivity",
+      "ru.haier.evo/.tv.core.mainScreen.TvMainActivity",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [
+      "com.haier.apps",
+      "fusion.android.tv.demo",
+      "com.haier.tvhousekeeper",
+      "android.autoinstalls.config.haier.hanyang",
+      "com.mediatek.android.leanbacklauncher.partnercustomizer",
+      "com.google.android.tvrecommendations",
+      "com.google.android.feedback",
+      "com.android.tv.feedbackconsent",
+      "com.google.android.partnersetup",
+      "com.haierubic.usmartdevice",
+      "ru.haier.evo",
+      "ru.rt.video.app.tv"
+    ],
+    "disabled": [
+      "android.autoinstalls.config.haier.hanyang",
+      "com.amazon.amazonvideo.livingroom",
+      "com.android.tv.feedbackconsent",
+      "com.google.android.feedback",
+      "com.google.android.marvin.talkback",
+      "com.google.android.partnersetup",
+      "com.google.android.play.games",
+      "com.google.android.youtube.tvmusic",
+      "com.haier.apps",
+      "com.haier.launcher.haiermatrix",
+      "com.haier.tvhousekeeper",
+      "com.haierubic.usmartdevice",
+      "com.mediatek.android.leanbacklauncher.partnercustomizer",
+      "fusion.android.tv.demo"
+    ]
+  },
+  "38": {
+    "make": "DEXP",
+    "brand": "DEXP",
+    "model": "43UCY1-G",
+    "sdk": "30",
+    "release": "11",
+    "home": "com.leanbitlab.ltvL/.MainActivity",
+    "candidates": [
+      "com.yandex.tv.home/.HomeActivity",
+      "com.leanbitlab.ltvL/.MainActivity",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [
+      "com.yandex.android.advid",
+      "com.yandex.tv.bugreportsender"
+    ],
+    "disabled": [
+      "com.yandex.android.advid",
+      "com.yandex.tv.bugreportsender"
+    ]
+  },
+  "35": {
+    "make": "Xiaomi",
+    "brand": "Xiaomi",
+    "model": "MiTV-AFMU1",
+    "sdk": "34",
+    "release": "14",
+    "home": "com.google.android.apps.tv.launcherx/.home.HomeActivity",
+    "candidates": [
+      "com.google.android.apps.tv.launcherx/.home.HomeActivity",
+      "com.google.android.tungsten.setupwraith/.RecoveryActivity",
+      "com.leanbitlab.ltvL/.MainActivity",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [
+      "com.miui.tv.analytics",
+      "com.xiaomi.statistic",
+      "com.mitv.tvhome.michannel",
+      "com.mitv.tvhome.oemtab",
+      "com.google.android.feedback",
+      "com.android.tv.feedbackconsent",
+      "com.google.android.partnersetup",
+      "com.mitv.tvhome.mitvplus",
+      "com.mitv.tvhome.atv",
+      "com.google.android.play.games",
+      "com.google.android.youtube.tvmusic"
+    ],
+    "disabled": [
+      "com.android.tv.feedbackconsent",
+      "com.google.android.feedback",
+      "com.google.android.partnersetup",
+      "com.google.android.play.games",
+      "com.google.android.youtube.tvmusic",
+      "com.mitv.tvhome.atv",
+      "com.mitv.tvhome.michannel",
+      "com.mitv.tvhome.mitvplus",
+      "com.mitv.tvhome.oemtab",
+      "com.miui.tv.analytics",
+      "com.xiaomi.statistic"
+    ]
+  },
+  "34": {
+    "make": "YANDEX",
+    "brand": "YANDEX",
+    "model": "YNDX-00072",
+    "sdk": "28",
+    "release": "9",
+    "home": "не определён",
+    "candidates": [
+      "com.yandex.tv.home/.HomeActivity",
+      "com.leanbitlab.ltvL/.MainActivity"
+    ],
+    "journal": [
+      "com.yandex.android.advid",
+      "com.yandex.tv.bugreportsender",
+      "com.cultraview.osupdate",
+      "com.yandex.browser.tv",
+      "com.yandex.tv.webplayer",
+      "com.yandex.tv.videoplayer",
+      "ru.ivi.client",
+      "ru.rt.video.app.tv"
+    ],
+    "disabled": [
+      "com.cultraview.osupdate",
+      "com.yandex.android.advid",
+      "com.yandex.browser.tv",
+      "com.yandex.tv.bugreportsender",
+      "com.yandex.tv.videoplayer",
+      "com.yandex.tv.webplayer"
+    ]
+  },
+  "32": {
+    "make": "SEI Robotics",
+    "brand": "Homatics",
+    "model": "Dongle Q",
+    "sdk": "34",
+    "release": "14",
+    "home": "com.google.android.tvlauncher/.MainActivity",
+    "candidates": [
+      "com.google.android.tvlauncher/.MainActivity",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [],
+    "disabled": []
+  },
+  "31": {
+    "make": "HARTENS",
+    "brand": "HARTENS",
+    "model": "HTY-43FHD06B-S2",
+    "sdk": "28",
+    "release": "9",
+    "home": "com.leanbitlab.ltvL/.MainActivity",
+    "candidates": [
+      "com.yandex.tv.home/.HomeActivity",
+      "com.leanbitlab.ltvL/.MainActivity"
+    ],
+    "journal": [
+      "com.yandex.tv.bugreportsender"
+    ],
+    "disabled": [
+      "com.yandex.android.advid",
+      "com.yandex.browser.tv",
+      "com.yandex.tv.alice",
+      "com.yandex.tv.bugreportsender"
+    ]
+  },
+  "30": {
+    "make": "Xiaomi",
+    "brand": "Xiaomi",
+    "model": "MiTV-AFKR0",
+    "sdk": "30",
+    "release": "11",
+    "home": "com.google.android.apps.tv.launcherx/.home.HomeActivity",
+    "candidates": [
+      "com.google.android.apps.tv.launcherx/.home.HomeActivity",
+      "com.google.android.tungsten.setupwraith/.RecoveryActivity",
+      "com.leanbitlab.ltvL/.MainActivity",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [
+      "com.miui.tv.analytics",
+      "com.xiaomi.statistic",
+      "com.mitv.tvhome.michannel",
+      "com.mitv.tvhome.oemtab",
+      "android.autoinstalls.config.xioami.mibox3",
+      "com.google.android.feedback",
+      "com.google.android.partnersetup"
+    ],
+    "disabled": [
+      "android.autoinstalls.config.xioami.mibox3",
+      "com.amazon.amazonvideo.livingroom",
+      "com.google.android.feedback",
+      "com.google.android.partnersetup",
+      "com.mitv.tvhome.michannel",
+      "com.mitv.tvhome.oemtab",
+      "com.miui.tv.analytics",
+      "com.netflix.ninja",
+      "com.xiaomi.statistic"
+    ]
+  },
+  "26": {
+    "make": "SaluteTV",
+    "brand": "SaluteTV",
+    "model": "SaluteTV",
+    "sdk": "33",
+    "release": "13",
+    "home": "ru.sberdevices.starlauncher/.ui.mainscreen.MainActivity",
+    "candidates": [
+      "ru.sberdevices.starlauncher/.ui.mainscreen.MainActivity",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [
+      "ru.sberdevices.smarthome.promo",
+      "ru.sberdevices.videos",
+      "ru.sberdevices.music",
+      "ru.sberdevices.sberplay",
+      "ru.sberdevices.gamepad.service",
+      "ru.sberdevices.huaweicast",
+      "ru.sberdevices.startube"
+    ],
+    "disabled": [
+      "ru.sberdevices.gamepad.service",
+      "ru.sberdevices.smarthome.promo",
+      "ru.sberdevices.videos"
+    ]
+  },
+  "25": {
+    "make": "Haier",
+    "brand": "Haier",
+    "model": "Haier Android TV FF Pro",
+    "sdk": "34",
+    "release": "14",
+    "home": "com.google.android.tvlauncher/.MainActivity",
+    "candidates": [
+      "com.google.android.tvlauncher/.MainActivity",
+      "ru.haier.evo/.tv.core.mainScreen.TvMainActivity",
+      "com.leanbitlab.ltvL/.MainActivity",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [
+      "com.haier.apps",
+      "fusion.android.tv.demo",
+      "com.haier.tvhousekeeper",
+      "android.autoinstalls.config.haier.hanyang",
+      "com.mediatek.android.leanbacklauncher.partnercustomizer",
+      "com.google.android.tvrecommendations",
+      "com.google.android.feedback",
+      "com.android.tv.feedbackconsent",
+      "com.google.android.partnersetup"
+    ],
+    "disabled": [
+      "android.autoinstalls.config.haier.hanyang",
+      "com.android.tv.feedbackconsent",
+      "com.google.android.feedback",
+      "com.google.android.katniss",
+      "com.google.android.marvin.talkback",
+      "com.google.android.partnersetup",
+      "com.google.android.tvrecommendations",
+      "com.haier.apps",
+      "com.haier.launcher.haiermatrix",
+      "com.haier.tvhousekeeper",
+      "com.mediatek.android.leanbacklauncher.partnercustomizer",
+      "com.netflix.ninja",
+      "fusion.android.tv.demo"
+    ]
+  },
+  "23": {
+    "make": "ARCELIK",
+    "brand": "GRUNDIG",
+    "model": "Grundig Android TV",
+    "sdk": "30",
+    "release": "11",
+    "home": "не определён",
+    "candidates": [
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [
+      "com.google.android.apps.mediashell"
+    ],
+    "disabled": [
+      "com.android.cts.ctsshim",
+      "com.android.cts.priv.ctsshim",
+      "com.android.dreams.basic",
+      "com.android.dynsystem",
+      "com.android.printspooler",
+      "com.android.providers.calendar",
+      "com.android.providers.contacts",
+      "com.android.providers.userdictionary",
+      "com.android.se",
+      "com.android.wallpaperbackup",
+      "com.arcelik.ChannelEditor",
+      "com.arcelik.arserviceapp",
+      "com.arcelik.easy_installation",
+      "com.arcelik.producthelp",
+      "com.arcelik.tv.rctest",
+      "com.google.android.apps.mediashell",
+      "com.google.android.backdrop",
+      "com.google.android.feedback",
+      "com.google.android.katniss",
+      "com.google.android.marvin.talkback",
+      "com.google.android.onetimeinitializer",
+      "com.google.android.partnersetup",
+      "com.google.android.play.games",
+      "com.google.android.syncadapters.calendar",
+      "com.google.android.tts",
+      "com.google.android.tungsten.setupwraith",
+      "com.google.android.tvlauncher",
+      "com.google.android.tvrecommendations",
+      "com.google.android.videos",
+      "com.google.android.youtube.tvmusic",
+      "com.mediatek.android.leanbacklauncher.partnercustomizer",
+      "fusion.android.tv.demo"
+    ]
+  },
+  "20": {
+    "make": "TCL",
+    "brand": "TCL",
+    "model": "BeyondTV",
+    "sdk": "30",
+    "release": "11",
+    "home": "com.google.android.tvlauncher/.MainActivity",
+    "candidates": [
+      "com.google.android.tvlauncher/.MainActivity",
+      "com.leanbitlab.ltvL/.MainActivity",
+      "com.tcl.keycustomfunctionservice/.FallbackHome",
+      "com.android.tv.settings/.system.FallbackHome"
+    ],
+    "journal": [],
+    "disabled": [
+      "au.com.stan.and",
+      "com.amazon.amazonvideo.livingroom",
+      "com.google.android.apps.nbu.smartconnect.tv",
+      "com.google.android.play.games",
+      "com.google.android.videos",
+      "com.google.android.youtube.tvmusic",
+      "com.netflix.ninja",
+      "com.tcl.gallery",
+      "com.tcl.notereminder",
+      "com.tcl.tv.tclhome_master",
+      "tv.wuaki.apptv",
+      "uk.co.freeview.amc_catchup",
+      "uk.co.freeview.amc_horror",
+      "uk.co.freeview.bbc",
+      "uk.co.freeview.bbc_sounds",
+      "uk.co.freeview.ch4_vod",
+      "uk.co.freeview.ch5",
+      "uk.co.freeview.explore",
+      "uk.co.freeview.fvpconfigauth",
+      "uk.co.freeview.itv",
+      "uk.co.freeview.mdsclient",
+      "uk.co.freeview.onnow",
+      "uk.co.freeview.stv",
+      "uk.co.freeview.systemdistributor",
+      "uk.co.freeview.tifbridge",
+      "uk.co.freeview.uktv"
+    ]
+  }
+}
