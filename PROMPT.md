@@ -75,7 +75,7 @@ YouTube без тормозов
 - Предложи поставить SmartTube (открытый клиент YouTube для ТВ, github.com/yuliskov/SmartTube) — бери
   APK только из релизов этого репозитория, под архитектуру ТВ (`getprop ro.product.cpu.abilist`).
 - Предложи VPN-клиент для ТВ (Happ: `https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk`,
-  пакет `com.happproxy`). Если у меня есть ссылка подписки, импортируй её командой
+  пакет `su.happ.proxyutility`). Если у меня есть ссылка подписки, импортируй её командой
   `am start -a android.intent.action.VIEW -d 'happ://add/<ссылка>'` и попроси меня подтвердить на ТВ.
 - Предложи по желанию DNS с блокировкой рекламы (Android 9+): `settings put global private_dns_specifier
   dns.adguard-dns.com`, затем `settings put global private_dns_mode hostname`. Скажи, что рекламу внутри
