@@ -11,7 +11,7 @@ class LiveHomeTest {
   private fun adb(vararg args: String): String {
     val process = ProcessBuilder(listOf("adb", "-s", serial) + args).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().readText().trim()
-    check(process.waitFor() == 0) { output }
+    check(process.waitFor() == 0) { "adb ${args.joinToString(" ")}: $output" }
     return output
   }
 
@@ -29,7 +29,9 @@ class LiveHomeTest {
     assertTrue(original, original.contains("/") && home.matches(Regex("[A-Za-z0-9_.]+")))
     assertTrue("image has an actual launcher: $original", "launcher" in home)
     val bridge = object : Adb {
-      override fun shell(command: String) = adb("shell", command)
+      // App Adb.shell returns command output even when a remote utility exits 1,
+      // for example reading the not-yet-created optional journal on a clean image.
+      override fun shell(command: String) = adb("shell", "-x", command)
       override fun push(source: File, remotePath: String) { adb("push", source.absolutePath, remotePath) }
     }
     val root = File(System.getProperty("chistytv.repo"))
