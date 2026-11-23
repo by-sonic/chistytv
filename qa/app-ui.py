@@ -73,12 +73,17 @@ def main():
     shell("settings put system accelerometer_rotation 0")
     shell("settings put system user_rotation 0")
     print("adbd over emulator LAN loopback endpoint, existing shell:", shell("getprop ro.adb.secure"))
+    # Open a real adbd TCP listener on the test TV. The emulator host port 5555 is its separate qemu transport.
+    print(adb("tcpip", "15555"), flush=True)
+    adb("wait-for-device")
+    assert shell("getprop service.adb.tcp.port") == "15555"
+    print("Listening:", shell("ss -ltn | grep 15555"), flush=True)
     # Avoid leaving the onboarding screen off the bottom during manual IP entry.
     assert "Status: ok" in shell(f"am start -W -n {APP}/.MainActivity")
     action("РќР°Р№С‚Рё С‚РµР»РµРІРёР·РѕСЂ", swipe=True)
     action("Р’РІРµСЃС‚Рё IP", swipe=True)
     action("android.widget.EditText", kind="class")
-    shell("input text 10.0.2.2:5555")
+    shell("input text 127.0.0.1:15555")
     shell("input keyevent KEYCODE_BACK")
     action("РџРѕРґРєР»СЋС‡РёС‚СЊ")
     action("РќРѕРІС‹Р№ РіР»Р°РІРЅС‹Р№ СЌРєСЂР°РЅ", swipe=True, seconds=90)
@@ -90,18 +95,28 @@ def main():
     shell("settings put global http_proxy 127.0.0.1:9")
     try:
         tap(button)
-        for _ in range(70):
-            if resolve().startswith(ROOT + "/"):
+        for _ in range(60):
+            if "package:" + ROOT in shell("pm list packages -e").splitlines():
                 break
-            time.sleep(1)
-        assert resolve().startswith(ROOT + "/"), resolve()
+            time.sleep(0.5)
         assert "package:" + ROOT in shell("pm list packages -e").splitlines()
+        time.sleep(5)
         assert "package:" + initial.split("/")[0] in shell("pm list packages -e").splitlines()
+        if not home_after_key(ROOT):
+            print("Stock HOME retained. Return to the connected ChistyTV client and explicitly confirm its hard mode.", flush=True)
+            shell(f"am start -n {APP}/.MainActivity --activity-reorder-to-front")
+            action("Отключить штатный лаунчер", swipe=True)
+            action("Отключить")
+            for _ in range(15):
+                if "package:" + initial.split("/")[0] in shell("pm list packages -d").splitlines():
+                    break
+                time.sleep(1)
         assert_home(ROOT)
         Path(ART / "home.png").write_bytes(subprocess.check_output(["adb", "-s", "emulator-5554", "exec-out", "screencap", "-p"]))
         print("Released client installed and activated the launcher through its visible UI.")
     finally:
         shell("settings put global http_proxy :0")
+        shell("pm enable " + initial.split("/")[0])
         assert "Success" in shell("cmd package set-home-activity " + initial)
         assert_home(initial.split("/")[0])
 
