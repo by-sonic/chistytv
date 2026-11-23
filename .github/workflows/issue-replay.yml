@@ -1,0 +1,36 @@
+name: Released package manager command replay
+on:
+  push:
+    branches: [qa/issue-replay-20261122]
+permissions:
+  contents: read
+jobs:
+  api34:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Download released application
+        run: |
+          curl -fsSL https://github.com/by-sonic/chistytv/releases/download/android-v1.0.8/ChistyTV.apk -o ChistyTV.apk
+          echo 'ad4d9cbcb831ecb608e6cf08ca948bc56ff75518a03604aa0a259c96418cb214  ChistyTV.apk' | sha256sum -c -
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          script: |
+            adb shell getprop ro.build.fingerprint
+            adb install ChistyTV.apk
+            adb shell pm disable-user --user 0 ru.bysonic.chistytv
+            adb shell pm list packages -d | grep -Fx 'package:ru.bysonic.chistytv'
+            adb shell pm enable ru.bysonic.chistytv
+            adb shell pm list packages -e | grep -Fx 'package:ru.bysonic.chistytv'
+            adb shell pm disable-user ru.bysonic.chistytv
+            adb shell pm list packages -d | grep -Fx 'package:ru.bysonic.chistytv'
+            adb shell pm enable ru.bysonic.chistytv
+            adb shell pm list packages -e | grep -Fx 'package:ru.bysonic.chistytv'
