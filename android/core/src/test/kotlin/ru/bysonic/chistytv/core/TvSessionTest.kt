@@ -24,10 +24,10 @@ class TvSessionTest {
     val text: String get() = lines.joinToString("\n") { it.text }
   }
 
-  private fun run(tv: FakeTv, net: Net = StubNet(), database: Db = db): Run {
+  private fun run(tv: Adb, net: Net = StubNet(), database: Db = db): Run {
     val lines = mutableListOf<Line>()
     val root = Files.createTempDirectory("chistytv-test").toFile()
-    val s = TvSession(tv, database, root, ApkCache(File(root, "apk"), net, emptyMap()), net, Output { lines += it }, sleep = {})
+    val s = TvSession(tv, database, root, ApkCache(File(root, "apk"), net, emptyMap()) { File(repo, "data/$it").inputStream() }, net, Output { lines += it }, sleep = {})
     return Run(s, lines, root)
   }
 
@@ -110,7 +110,7 @@ class TvSessionTest {
   @Test
   fun `2д лаунчер убран мимо ЧистогоТВ — журнала нет, а вернуть надо`() {
     val tv = FakeTv(installed + listOf("com.leanbitlab.ltvL", "com.cvte.tv.launcher.saturn.skin"))
-    tv.removed += "com.cvte.tv.launcher.highend"
+    tv.removed += listOf("com.cvte.tv.launcher.highend", "com.gathin.tvhome")
     tv.disabled += "com.cvte.tv.launcher.saturn.skin"
     val r = run(tv)
     assertEquals(setOf("com.cvte.tv.launcher.highend", "com.cvte.tv.launcher.saturn.skin"), r.session.removedHome().toSet())
@@ -139,11 +139,11 @@ class TvSessionTest {
     assertTrue(Protect.isProtected("com.cvte.tv.launcher.highend"))
   }
 
-  private fun reportTv() = FakeTv(installed + listOf("com.cvte.unknown.service", "com.leanbitlab.ltvL", "com.secret.bank")).apply {
+  private fun reportTv() = FakeTv(installed + listOf("com.cvte.unknown.service", "com.leanbitlab.ltvL", "com.gathin.tvhome", "com.secret.bank")).apply {
     props["ro.build.fingerprint"] = "MediaTek/m7332_eu/m7332_eu:11/PPR2/builder:userdebug/dev-keys"
     props["ro.serialno"] = "SERIAL-12345"
-    thirdParty += listOf("com.secret.bank", "com.leanbitlab.ltvL")
-    homeApps += listOf("com.cvte.tv.launcher.highend/.Main", "com.leanbitlab.ltvL/.MainActivity", "com.secret.bank/.Home")
+    thirdParty += listOf("com.secret.bank", "com.leanbitlab.ltvL", "com.gathin.tvhome")
+    homeApps += listOf("com.cvte.tv.launcher.highend/.Main", "com.leanbitlab.ltvL/.MainActivity", "com.gathin.tvhome/.MainActivity", "com.secret.bank/.Home")
   }
 
   @Test
@@ -154,6 +154,7 @@ class TvSessionTest {
     assertTrue(rep.full, rep.full.contains("MiTV-TEST") && rep.full.contains("m7332_eu") && rep.full.contains("приложение 1.0.5"))
     assertTrue("незнакомый пакет в отчёте", rep.full.contains("com.cvte.unknown.service"))
     assertFalse("пакет из базы не нужен", rep.full.contains("\n${safe[0]}\n"))
+    assertTrue(rep.full.contains("com.gathin.tvhome/.MainActivity"))
     assertTrue("сторонний лаунчер ЧистогоТВ виден", rep.full.contains("com.leanbitlab.ltvL/.MainActivity"))
     assertTrue("короткий текст без списка пакетов", !rep.short.contains("com.cvte.unknown.service") && rep.short.contains("Что случилось"))
   }
@@ -348,25 +349,26 @@ class TvSessionTest {
 
   @Test
   fun `7 главный экран — прошивка слушается set-home-activity`() {
-    val tv = FakeTv(installed + "com.leanbitlab.ltvL", homeWorks = true)
+    val tv = FakeTv(installed + listOf("com.gathin.tvhome", "com.leanbitlab.ltvL"), homeWorks = true)
     val r = run(tv)
     assertEquals(TvSession.HomeResult.OPENS, r.session.makeLauncherHome())
-    assertEquals("com.leanbitlab.ltvL/com.leanbitlab.ltvL.MainActivity", tv.home)
-    assertTrue(r.text.contains("открывает LTvLauncher"))
+    assertEquals("com.gathin.tvhome/com.gathin.tvhome.MainActivity", tv.home)
+    assertTrue(r.text.contains("открывает CleanYourTV Launcher"))
+    assertTrue("старый лаунчер остался установлен", "com.leanbitlab.ltvL" in tv.installed)
   }
 
   @Test
   fun `8 главный экран — прошивка упрямится, штатный лаунчер без согласия цел`() {
-    val tv = FakeTv(installed + listOf("com.leanbitlab.ltvL", "com.test.launcher"))
+    val tv = FakeTv(installed + listOf("com.gathin.tvhome", "com.test.launcher"))
     val r = run(tv)
     assertEquals(TvSession.HomeResult.STUBBORN, r.session.makeLauncherHome())
-    assertTrue(r.text.contains("Home Button Fix"))
+    assertTrue(r.text.contains("Главный экран по умолчанию"))
     assertTrue(tv.disabled.isEmpty())
   }
 
   @Test
   fun `9 жёсткий режим — парный пакет владеет Wi-Fi, ничего не отключаем`() {
-    val tv = FakeTv(installed + listOf("com.leanbitlab.ltvL", "com.test.stock", "com.test.wraith"), wifiOwner = "cname=com.test.wraith")
+    val tv = FakeTv(installed + listOf("com.gathin.tvhome", "com.test.stock", "com.test.wraith"), wifiOwner = "cname=com.test.wraith")
     val r = run(tv)
     r.session.makeLauncherHome()
     assertEquals(TvSession.HardResult.WIFI_OWNER, r.session.disableStockLauncher())
@@ -376,13 +378,29 @@ class TvSessionTest {
 
   @Test
   fun `10 жёсткий режим — лаунчер отключается вместе с парным пакетом`() {
-    val tv = FakeTv(installed + listOf("com.leanbitlab.ltvL", "com.test.stock", "com.test.wraith"))
+    val tv = FakeTv(installed + listOf("com.gathin.tvhome", "com.test.stock", "com.test.wraith"))
     val r = run(tv)
     assertEquals(listOf("com.test.stock", "com.test.wraith"), r.session.stockLaunchers().map { it.id })
     r.session.makeLauncherHome()
     assertEquals(TvSession.HardResult.DONE, r.session.disableStockLauncher())
     assertTrue(tv.disabled.containsAll(listOf("com.test.stock", "com.test.wraith")))
     assertTrue(r.text.contains("Готово"))
+  }
+
+  @Test
+  fun `неподтверждённый откат сохраняет журнал и показывает как повторить восстановление`() {
+    val tv = FakeTv(installed + listOf("com.gathin.tvhome", "com.test.stock", "com.test.wraith"))
+    val unreadableHome = object : Adb by tv {
+      override fun shell(command: String): String =
+        if (command == "dumpsys activity activities") "" else tv.shell(command)
+    }
+    val r = run(unreadableHome)
+    tv.refuseEnable += "com.test.wraith"
+    assertEquals(TvSession.HardResult.RESTORE_PENDING, r.session.disableStockLauncher())
+    assertEquals(listOf("com.test.wraith"), tv.disabled)
+    assertTrue("com.test.wraith" in r.session.store.recorded())
+    assertTrue(r.text.contains("Вернуть как было"))
+    assertFalse(r.text.contains("Штатные пакеты снова включены"))
   }
 
   @Test
@@ -496,14 +514,55 @@ class TvSessionTest {
   }
 
   @Test
+  fun `CleanYourTV ставится из комплекта без сети на минимальном Android 8`() {
+    val tv = FakeTv(installed + "com.leanbitlab.ltvL")
+    tv.props["ro.build.version.sdk"] = "26"
+    val net = StubNet(fail = true)
+    val r = run(tv, net)
+    assertFalse(r.session.launcherInstalled)
+    assertTrue(r.session.installLauncher())
+    assertTrue(tv.commands.contains("pm install -r /data/local/tmp/chistytv.apk"))
+    assertTrue(net.downloaded.isEmpty())
+    assertTrue(File(r.root, "apk").listFiles().orEmpty().isEmpty())
+  }
+
+  @Test
+  fun `подмена встроенного APK останавливает установку до передачи на ТВ`() {
+    val dir = Files.createTempDirectory("launcher").toFile()
+    val cache = ApkCache(dir, StubNet(), openAsset = { "bad".byteInputStream() })
+    org.junit.Assert.assertThrows(IOException::class.java) {
+      cache.installBundledLauncher { error("Подменённый файл передан на установку") }
+    }
+    assertTrue(dir.listFiles().orEmpty().isEmpty())
+  }
+
+  @Test
+  fun `если ADB потерял данные об экране жёсткий способ не предлагается`() {
+    val tv = FakeTv(installed + "com.gathin.tvhome")
+    val offline = object : Adb by tv {
+      override fun shell(command: String): String =
+        if (command == "dumpsys activity activities") "adb.exe: device offline" else tv.shell(command)
+    }
+    val r = run(offline)
+    org.junit.Assert.assertThrows(IOException::class.java) { r.session.makeLauncherHome() }
+    assertTrue(tv.disabled.isEmpty())
+    assertFalse(r.text.contains("Прошивка всё равно открывает"))
+  }
+
+  @Test
   fun `LTvLauncher — сборка под процессор телевизора`() {
     val net = StubNet(
       api = """{"tag_name":"v1.4","assets":[{"name":"LtvLauncher-v1.4-arm64-v8a-release.apk","browser_download_url":"https://x/arm64.apk"},
         {"name":"LtvLauncher-v1.4-armeabi-v7a-release.apk","browser_download_url":"https://x/v7a.apk"},
         {"name":"LtvLauncher-v1.4-universal-release.apk","browser_download_url":"https://x/u.apk"}]}""",
     )
-    val tv = FakeTv(installed)
-    assertTrue(run(tv, net).session.installLauncher())
+    val tv = FakeTv(installed + "com.leanbitlab.ltvL", homeWorks = true)
+    tv.props["ro.build.version.sdk"] = "25"
+    val r = run(tv, net)
+    assertTrue(r.session.launcherInstalled)
+    assertTrue(r.session.installLauncher())
+    assertEquals(TvSession.HomeResult.OPENS, r.session.makeLauncherHome())
+    assertTrue(tv.home.startsWith("com.leanbitlab.ltvL/"))
     assertEquals(listOf("https://x/v7a.apk"), net.downloaded)
   }
 

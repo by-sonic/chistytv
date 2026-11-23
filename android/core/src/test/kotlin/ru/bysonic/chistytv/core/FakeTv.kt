@@ -63,6 +63,7 @@ class FakeTv(
     Regex("^getprop (\\S+)$").find(c)?.let { return props[it.groupValues[1]].orEmpty() }
     if (c == "getprop") return props.entries.joinToString("\n") { "[${it.key}]: [${it.value}]" }
     if (c == "pm list packages") return installed.joinToString("\n") { "package:$it" }
+    if (c == "pm list packages -e") return (installed - disabled.toSet()).joinToString("\n") { "package:$it" }
     if (c == "pm list packages -d") return disabled.joinToString("\n") { "package:$it" }
     if (c == "pm list packages -s") return (installed - thirdParty).joinToString("\n") { "package:$it" }
     if (c == "pm list packages -3") return thirdParty.joinToString("\n") { "package:$it" }

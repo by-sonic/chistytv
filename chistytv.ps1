@@ -30,6 +30,7 @@ if ($PSBoundParameters) { foreach ($k in $PSBoundParameters.Keys) { $chistytvArg
   $local = if ($Root) { Join-Path $Root 'src\main.ps1' }
   if ($local -and (Test-Path $local)) {
     $code = [IO.File]::ReadAllText($local, [Text.Encoding]::UTF8)
+    $Params['LauncherApkPath'] = Join-Path $Root 'data\CleanYourTV-Launcher-3.6.apk'
     $db = Join-Path $Root 'data\packages.json'
     if (-not $Params.ContainsKey('DataPath') -and (Test-Path $db)) { $Params['DataPath'] = $db }
   } else {

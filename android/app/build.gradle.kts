@@ -19,8 +19,8 @@ android {
     applicationId = "ru.bysonic.chistytv"
     minSdk = 24
     targetSdk = 36
-    versionCode = 10
-    versionName = "1.0.9"
+    versionCode = 11
+    versionName = "1.0.10"
   }
 
   signingConfigs {
@@ -54,7 +54,7 @@ android {
   }
 
   sourceSets {
-    // База пакетов — та же data/packages.json, что у скрипта: одна правда на двоих
+    // База пакетов, APK лаунчера и его лицензии общие со скриптом PowerShell.
     getByName("main").assets.directories.add(rootDir.parentFile.resolve("data").path)
   }
 

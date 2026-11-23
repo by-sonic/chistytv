@@ -16,9 +16,14 @@ switch ($argv[0]) {
   }
   'disconnect' { "disconnected"; return }
   'get-state' { 'device'; return }
-  'push' { "$($argv[1]): 1 file pushed, 0 skipped."; return }
+  'push' {
+    $state | Add-Member -Force pushed_file (Split-Path $argv[1] -Leaf)
+    Save
+    "$($argv[1]): 1 file pushed, 0 skipped."; return
+  }
   'shell' {
     $cmd = ($argv[1..($argv.Count - 1)]) -join ' '
+    if ($state.disconnect_on -and $cmd -eq $state.disconnect_on) { 'adb.exe: device offline'; return }
     if ($cmd -match '^getprop (\S+)$') { $state.props.($Matches[1]); return }
     if ($cmd -eq 'getprop') { $state.props.PSObject.Properties | ForEach-Object { "[$($_.Name)]: [$($_.Value)]" }; return }
     if ($cmd -eq 'pm list packages') { $state.installed | ForEach-Object { "package:$_" }; return }
@@ -78,7 +83,8 @@ switch ($argv[0]) {
       return
     }
     if ($cmd -match '^pm install -r ') {
-      $state.installed = @($state.installed) + 'com.installed.by.test' | Select-Object -Unique
+      $pkg = if ($state.pushed_file -eq 'CleanYourTV-Launcher-3.6.apk') { 'com.gathin.tvhome' } else { 'com.installed.by.test' }
+      $state.installed = @($state.installed) + $pkg | Select-Object -Unique
       Save
       'Success'; return
     }

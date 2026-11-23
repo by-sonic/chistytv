@@ -32,7 +32,8 @@
 - SmartTube — https://github.com/yuliskov/SmartTube (пакеты `org.smarttube.stable` / `org.smarttube.beta`)
 - Happ для Android TV — https://www.happ.su/main/faq/android-tv.md , API импорта на ТВ —
   https://www.happ.su/main/dev-docs/android-tv-api.md
-- LTvLauncher — https://github.com/leanbitlab-org/LtvLauncher
+- CleanYourTV Launcher 3.6 для Android TV 8 и новее собран из [тега v3.6.0](https://github.com/Gathin23/cleanyourtv/tree/f63a1ebcdcd63aae1ec1b6f62aa4d2a6858c116b/launcher) задачей `:app:assembleRelease` и подписан локально. SHA-256 файла `data/CleanYourTV-Launcher-3.6.apk` — `2711f35b112a9f645c97e5a857f2c5e366c775a43354f1b8667d2aa2ad186318`. [Лицензии приложения, шрифта и изображений](../data/licenses/CleanYourTV).
+- LTvLauncher для более старых телевизоров — https://github.com/leanbitlab-org/LtvLauncher
 - Google platform-tools — https://developer.android.com/tools/releases/platform-tools
 - Онлайн-кинотеатры — карточки приложений в RuStore TV и Google Play
 

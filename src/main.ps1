@@ -21,7 +21,8 @@ param(
   [switch]$Yes,
   [string]$AdbPath,
   [string]$DataPath,
-  [string]$WorkDir
+  [string]$WorkDir,
+  [string]$LauncherApkPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,7 +30,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.10'
+$Script:Version = '0.2.11'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -142,7 +143,13 @@ function Invoke-Adb {
   return (($out | Where-Object { $_ -ne $null }) -join "`n").Trim()
 }
 
-function Sh([string]$Command) { return Invoke-Adb shell $Command }
+function Sh([string]$Command, [switch]$RequireConnection) {
+  $out = Invoke-Adb shell $Command
+  if ($RequireConnection -and $out -match '(?im)^(?:adb(?:\.exe)?:\s*)?(?:error:\s*)?(?:device (?:offline|unauthorized|''[^'']+'' not found)|no devices/emulators found|closed)\b') {
+    throw [IO.IOException]::new('Связь с телевизором потеряна. Подключитесь снова. Если штатный экран уже отключён, выберите «Вернуть как было».')
+  }
+  return $out
+}
 
 # ─── Поиск и подключение ─────────────────────────────────────────────────
 
@@ -371,7 +378,7 @@ function Get-RemovedHome {
   $list = {
     param([string]$Command)
     @((Sh $Command) -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() } |
-      Where-Object { $_ -cmatch $Script:SafePkg -and $_ -match 'launcher|tvhome|\.home$' -and $_ -notmatch 'updater' -and $cleanable -notcontains $_ })
+      Where-Object { $_ -cmatch $Script:SafePkg -and $_ -match 'launcher|tvhome|\.home$' -and $_ -notmatch 'updater' -and $cleanable -notcontains $_ -and $_ -ne $Script:LauncherPackage })
   }
   $now = @(& $list 'pm list packages')
   $removed = @(& $list 'pm list packages -u' | Where-Object { $now -notcontains $_ })
@@ -387,14 +394,14 @@ function Get-RestorePackages {
   return @(($local + $remote) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -cmatch $Script:SafePkg } | Select-Object -Unique)
 }
 
-function Disable-Packages($Entries) {
+function Disable-Packages($Entries, [switch]$RequireConnection) {
   $done = 0
   $protected = 0
   foreach ($e in $Entries) {
     # По одному пакету на вызов: в цепочке команд pm может молча остановиться после первой.
-    $out = Sh "pm disable-user --user 0 $($e.id)"
+    $out = Sh "pm disable-user --user 0 $($e.id)" -RequireConnection:$RequireConnection
     # Прошивка Homatics на Android 14 отвечает «This command is illegal!» на --user 0, а без него отключает
-    if ($out -match 'command is illegal') { $out = Sh "pm disable-user $($e.id)" }
+    if ($out -match 'command is illegal') { $out = Sh "pm disable-user $($e.id)" -RequireConnection:$RequireConnection }
     if ($out -match 'disabled-user|new state: disabled') {
       Add-RestoreLog $e.id
       Ok "$($e.title) ($($e.id))"
@@ -407,7 +414,7 @@ function Disable-Packages($Entries) {
       Warn "$($e.id): $(Get-ShortError $out)"
     }
   }
-  $now = (Sh 'pm list packages -d') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() }
+  $now = (Sh 'pm list packages -d' -RequireConnection:$RequireConnection) -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() }
   $notApplied = @($Entries | Where-Object { $now -notcontains $_.id })
   if ($done -eq 0 -and $Entries.Count -gt $protected) {
     Fail 'Прошивка не даёт отключать пакеты. Тогда остаётся блокировка рекламы через DNS (пункт меню «DNS»).'
@@ -477,7 +484,7 @@ function Invoke-Clean {
 # Чистка убирает рекламные сервисы и слежку, но ряды «рекомендаций» на главном экране рисует сам штатный
 # лаунчер. Его не отключаем — иначе ТВ останется без главного экрана. Без этой подсказки кажется, что ничего не произошло.
 function Show-HomeHint {
-  if ($Script:Info.Installed -contains $Script:LauncherPackage) { return }
+  if ($Script:Info.Installed -contains $Script:LauncherPackage -or $Script:Info.Installed -contains $Script:LegacyLauncherPackage) { return }
   Say ''
   Say '  Ряды с рекламой на главном экране рисует сам штатный лаунчер — чистка его не трогает, иначе ТВ' 'Yellow'
   Say '  останется без главного экрана. Чтобы убрать и их, выберите «Новый главный экран без рекламных рядов».' 'Yellow'
@@ -697,7 +704,8 @@ function Install-Apk([string]$File, [string]$Label) {
 $Script:SmartTubePackages = @('org.smarttube.stable', 'org.smarttube.beta', 'app.smarttube.fdroid',
   'com.teamsmart.videomanager.tv', 'com.liskovsoft.smarttubetv.beta')
 $Script:HappPackage = 'su.happ.proxyutility'
-$Script:LauncherPackage = 'com.leanbitlab.ltvL'
+$Script:LauncherPackage = 'com.gathin.tvhome'
+$Script:LegacyLauncherPackage = 'com.leanbitlab.ltvL'
 
 function Get-Abi {
   # Основная сборка SmartTube для ТВ — armeabi-v7a; arm64 берём, только если 32-битных библиотек нет.
@@ -899,46 +907,92 @@ function Invoke-Dns {
   Say '  Можно прописать AdGuard DNS в роутере (94.140.14.14 и 94.140.15.15) — тогда реклама режется у всех устройств дома.' 'DarkGray'
 }
 
+function Get-BundledLauncherApk {
+  $name = 'CleanYourTV-Launcher-3.6.apk'
+  $hash = '2711f35b112a9f645c97e5a857f2c5e366c775a43354f1b8667d2aa2ad186318'
+  if ($LauncherApkPath -and (Test-Path -LiteralPath $LauncherApkPath -PathType Leaf)) {
+    if ((Get-FileHash -LiteralPath $LauncherApkPath -Algorithm SHA256).Hash -eq $hash) { return $LauncherApkPath }
+    Fail 'Контрольная сумма встроенного CleanYourTV Launcher не совпала. Скачайте ЧистыйТВ заново.'
+    return $null
+  }
+  $cache = Join-Path $WorkDir 'apk'
+  New-Item -ItemType Directory -Force -Path $cache | Out-Null
+  $file = Join-Path $cache $name
+  if ((Test-Path -LiteralPath $file) -and (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -eq $hash) { return $file }
+  $temp = Join-Path $cache ([guid]::NewGuid().ToString() + '.tmp')
+  try {
+    $uri = "https://raw.githubusercontent.com/$($Script:Repo)/android-v1.0.10/data/$name"
+    Say '  Скачиваю CleanYourTV Launcher из выпуска ЧистыйТВ…' 'DarkGray'
+    Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $temp
+    if ((Get-FileHash -LiteralPath $temp -Algorithm SHA256).Hash -ne $hash) { throw 'Контрольная сумма APK не совпала.' }
+    Move-Item -LiteralPath $temp -Destination $file -Force
+    return $file
+  } catch {
+    Fail "Не удалось получить CleanYourTV Launcher: $($_.Exception.Message)"
+    Say "  При недоступном GitHub скопируйте $name из папки data выпуска ЧистыйТВ в $cache." 'DarkGray'
+    return $null
+  } finally {
+    if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force }
+  }
+}
+
 function Get-FocusedActivity {
-  $out = Sh 'dumpsys activity activities'
+  $out = Sh 'dumpsys activity activities' -RequireConnection
   $line = ($out -split "`n" | Where-Object { $_ -match 'topResumedActivity|mResumedActivity|mFocusedApp' } | Select-Object -First 1)
   return "$line"
 }
 
 function Test-HomeOpens([string]$Pkg) {
-  Sh 'input keyevent KEYCODE_HOME' | Out-Null
+  Sh 'input keyevent KEYCODE_HOME' -RequireConnection | Out-Null
   Start-Sleep -Seconds 3
   return ((Get-FocusedActivity) -match [regex]::Escape($Pkg))
 }
 
 function Invoke-Launcher {
+  try { Set-TvLauncher }
+  catch [IO.IOException] { Fail $_.Exception.Message }
+}
+
+function Set-TvLauncher {
   Title 'Новый главный экран без рекламы'
-  Say '  LTvLauncher — открытый лаунчер (GPL-3.0) без рекламных рядов и рекомендаций.' 'White'
+  $bundled = $Script:Info.Sdk -ge 26
+  if ($bundled) {
+    $package = $Script:LauncherPackage
+    $name = 'CleanYourTV Launcher'
+  } else {
+    $package = $Script:LegacyLauncherPackage
+    $name = 'LTvLauncher'
+  }
+  Say "  $name — главный экран без рекламных рядов и рекомендаций." 'White'
   Say '  Штатный главный экран не удаляется и не отключается, пока вы сами не попросите.' 'DarkGray'
-  if ($Script:Info.Installed -notcontains $Script:LauncherPackage) {
-    if (-not (Confirm 'Установить LTvLauncher (с официального GitHub)?')) { return }
-    $abi = Get-Abi
-    $apk = Get-Apk 'ltvlauncher' { Get-GitHubAsset 'leanbitlab-org/LtvLauncher' @("$abi-release\.apk$", 'universal-release\.apk$') }
-    if (-not (Install-Apk $apk 'LTvLauncher')) { return }
+  if ($Script:Info.Installed -notcontains $package) {
+    if (-not (Confirm "Установить $name?")) { return }
+    if ($bundled) { $apk = Get-BundledLauncherApk }
+    else {
+      $abi = Get-Abi
+      $apk = Get-Apk 'ltvlauncher' { Get-GitHubAsset 'leanbitlab-org/LtvLauncher' @("$abi-release\.apk$", 'universal-release\.apk$') }
+    }
+    if (-not (Install-Apk $apk $name)) { return }
   }
 
-  $component = (Sh "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -p $($Script:LauncherPackage)") -split "`n" |
-    ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^[\w\.]+/[\w\.\$]+$' } | Select-Object -Last 1
-  if (-not $component) { Fail 'Не нашёл экран лаунчера — откройте LTvLauncher вручную один раз и запустите пункт снова.'; return }
-  $out = Sh "cmd package set-home-activity $component"
+  $component = (Sh "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -p $package" -RequireConnection) -split "`n" |
+    ForEach-Object { $_.Trim() } | Where-Object { $_.StartsWith("$package/") -and $_ -match '^[\w.]+/[\w.$]+$' } | Select-Object -Last 1
+  if (-not $component) { Fail "Не нашёл экран лаунчера — откройте $name вручную один раз и запустите пункт снова."; return }
+  $out = Sh "cmd package set-home-activity $component" -RequireConnection
   if ($out -notmatch 'Success') { Warn "set-home-activity: $out" }
 
-  if (Test-HomeOpens $Script:LauncherPackage) {
-    Ok 'Кнопка «Домой» открывает LTvLauncher.'
+  if (Test-HomeOpens $package) {
+    Ok "Кнопка «Домой» открывает $name."
     return
   }
 
   Warn 'Прошивка всё равно открывает штатный главный экран (так делает Google TV и часть Яндекс ТВ).'
-  Say '  Мягкий способ: на ТВ откройте Настройки → Специальные возможности → «Home Button Fix» (LTvLauncher) и включите.' 'White'
+  if ($bundled) { Say '  Откройте приложение «Главный экран». Удерживайте OK на плитке настроек → Настройки главного экрана → Главный экран по умолчанию. Если ТВ предлагает выбор, укажите CleanYourTV.' 'White' }
+  else { Say '  Мягкий способ: на ТВ откройте Настройки → Специальные возможности → «Home Button Fix» (LTvLauncher) и включите.' 'White' }
   Say '  Затем нажмите «Домой» на пульте.' 'DarkGray'
   if ($Yes) { return }
-  if (Confirm 'Включили? Проверить ещё раз?') {
-    if (Test-HomeOpens $Script:LauncherPackage) { Ok 'Готово: «Домой» открывает LTvLauncher.'; return }
+  if (Confirm 'Проверить кнопку «Домой» ещё раз?') {
+    if (Test-HomeOpens $package) { Ok "Готово: «Домой» открывает $name."; return }
   }
 
   $stock = @()
@@ -958,7 +1012,7 @@ function Invoke-Launcher {
   if (-not $stock.Count) {
     Warn 'Проверенного способа заменить штатный лаунчер на этой прошивке нет — оставляю как есть.'
     Warn 'Не удаляйте и не отключайте его сами или через ИИ-ассистента: телевизор может перестать загружаться дальше логотипа.'
-    Say '  LTvLauncher установлен: его можно открывать из списка приложений.' 'DarkGray'
+    Say "  $name установлен: его можно открывать из списка приложений." 'DarkGray'
     return
   }
   Say ''
@@ -968,7 +1022,7 @@ function Invoke-Launcher {
 
   # Пакет-владелец сохранённой сети Wi-Fi при отключении удаляет её — ТВ отвалится от Wi-Fi и ADB.
   # Лаунчер и его парные пакеты отключаются только все вместе, поэтому при любой помехе отменяем всё.
-  $wifiOwners = Sh "dumpsys wifi | grep -o 'cname=[^ ]*'"
+  $wifiOwners = Sh "dumpsys wifi | grep -o 'cname=[^ ]*'" -RequireConnection
   $owners = @($stock | Where-Object { $wifiOwners -match [regex]::Escape($_.id) })
   if ($owners.Count) {
     Warn "$(($owners | ForEach-Object { $_.id }) -join ', ') владеет сохранённой сетью Wi-Fi: после отключения ТВ потеряет Wi-Fi."
@@ -976,11 +1030,11 @@ function Invoke-Launcher {
     return
   }
   $toDisable = $stock
-  Disable-Packages $toDisable | Out-Null
-  if (Test-HomeOpens $Script:LauncherPackage) { Ok 'Готово: «Домой» открывает LTvLauncher.' }
+  Disable-Packages $toDisable -RequireConnection | Out-Null
+  if (Test-HomeOpens $package) { Ok "Готово: «Домой» открывает $name." }
   else {
     Fail 'Не помогло. Возвращаю штатный лаунчер.'
-    foreach ($e in $toDisable) { Sh "pm enable $($e.id)" | Out-Null }
+    foreach ($e in $toDisable) { Sh "pm enable $($e.id)" -RequireConnection | Out-Null }
   }
 }
 
@@ -1015,7 +1069,7 @@ function Get-TvReport {
   $homes = {
     param([string]$Command)
     @((Sh $Command) -split "`n" | ForEach-Object { $_.Trim() } | Where-Object {
-      $_ -match '^[\w.]+/[\w.$]+$' -and ($system -contains $_.Split('/')[0] -or $_.Split('/')[0] -eq $Script:LauncherPackage)
+      $_ -match '^[\w.]+/[\w.$]+$' -and ($system -contains $_.Split('/')[0] -or $_.Split('/')[0] -in @($Script:LauncherPackage, $Script:LegacyLauncherPackage))
     })
   }
   $homeArgs = '--brief -a android.intent.action.MAIN -c android.intent.category.HOME'

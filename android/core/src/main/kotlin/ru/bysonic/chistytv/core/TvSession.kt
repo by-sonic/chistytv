@@ -1,6 +1,7 @@
 package ru.bysonic.chistytv.core
 
 import java.io.File
+import java.io.IOException
 import java.util.Base64
 import kotlin.random.Random
 
@@ -46,6 +47,7 @@ class TvSession(
       var r = adb.shell("pm disable-user --user 0 ${e.id}")
       // Прошивка Homatics на Android 14 отвечает «This command is illegal!» на --user 0, а без него отключает
       if (ILLEGAL.containsMatchIn(r)) r = adb.shell("pm disable-user ${e.id}")
+      if (r.isBlank() || ADB_OFFLINE.containsMatchIn(r)) throw IOException("Команда отключения ${e.id} не подтверждена через ADB. Проверьте соединение с телевизором.")
       if (DISABLED.containsMatchIn(r)) {
         store.record(e.id)
         out.ok("${e.title} (${e.id})")
@@ -89,7 +91,7 @@ class TvSession(
     }
     // Чистка убирает рекламные сервисы и слежку, но ряды «рекомендаций» на главном экране рисует сам
     // штатный лаунчер. Его не отключаем — иначе ТВ останется без главного экрана.
-    val hint = LAUNCHER_PACKAGE !in info.installed
+    val hint = info.installed.none { it in KNOWN_LAUNCHERS }
     if (hint) {
       out.warn(
         "Ряды с рекламой на главном экране рисует сам штатный лаунчер — чистка его не трогает, иначе ТВ " +
@@ -107,7 +109,7 @@ class TvSession(
    */
   fun removedHome(): List<String> {
     fun list(command: String) = TvInfo.parsePackages(adb.shell(command))
-      .filter { TvStore.SAFE_PKG.matches(it) && HOME_NAME.containsMatchIn(it) && "updater" !in it }
+      .filter { TvStore.SAFE_PKG.matches(it) && it !in KNOWN_LAUNCHERS && HOME_NAME.containsMatchIn(it) && "updater" !in it }
       .filterNot { db.entry(it)?.action == "disable" } // У сервисов рекламных рядов тоже бывает launcher в имени.
     val now = list("pm list packages").toSet()
     return list("pm list packages -u").filter { it !in now } +
@@ -403,7 +405,7 @@ class TvSession(
     val homeArgs = "--brief -a android.intent.action.MAIN -c android.intent.category.HOME"
     // Сторонний главный экран называем только свой: остальные — выбор человека
     fun homes(command: String) = adb.shell(command).lines().map { it.trim() }.filter {
-      Regex("^[\\w.]+/[\\w.$]+$").matches(it) && it.substringBefore('/').let { p -> p in system || p == LAUNCHER_PACKAGE }
+      Regex("^[\\w.]+/[\\w.$]+$").matches(it) && it.substringBefore('/').let { p -> p in system || p in KNOWN_LAUNCHERS }
     }
     val dns = dnsState().let { if (it.enabled) "AdGuard DNS" else if (it.mode == "hostname") "свой частный DNS" else it.title }
     val versionLine = "- **Собран:** $tool"
@@ -447,11 +449,25 @@ class TvSession(
 
   // ─── Главный экран ──────────────────────────────────────────────────
 
-  val launcherInstalled: Boolean get() = LAUNCHER_PACKAGE in info.installed
+  val usesBundledLauncher: Boolean get() = info.sdk >= 26
+  private val launcherPackage: String get() = if (usesBundledLauncher) LAUNCHER_PACKAGE else LEGACY_LAUNCHER_PACKAGE
+  val launcherName: String get() = if (usesBundledLauncher) "CleanYourTV Launcher" else "LTvLauncher"
+  val launcherInstalled: Boolean get() = launcherPackage in info.installed
+  val launcherHomeHint: String get() = if (usesBundledLauncher) {
+    "На ТВ откройте «Приложения» → «Главный экран». Удерживайте OK на плитке настроек и выберите «Настройки главного экрана» → «Главный экран по умолчанию», если прошивка предлагает выбор."
+  } else {
+    "На ТВ откройте Настройки → Специальные возможности → «Home Button Fix» (LTvLauncher) и включите. Затем нажмите «Домой» на пульте."
+  }
 
   fun installLauncher(): Boolean {
-    val apk = apks.get("ltvlauncher", out) { ApkSources.launcher(net, info) }
-    return installApk(apk, "LTvLauncher").also { refresh() }
+    val installed = if (usesBundledLauncher) {
+      apks.installBundledLauncher { installApk(it, launcherName) }
+    } else {
+      val apk = apks.get("ltvlauncher", out) { ApkSources.launcher(net, info) }
+      installApk(apk, launcherName)
+    }
+    refresh()
+    return installed
   }
 
   fun focusedActivity(): String = adb.shell("dumpsys activity activities").lines()
@@ -460,33 +476,37 @@ class TvSession(
   fun homeOpensLauncher(): Boolean {
     adb.shell("input keyevent KEYCODE_HOME")
     sleep(3000)
-    return focusedActivity().contains(LAUNCHER_PACKAGE)
+    val component = Regex("""(?:^|\s)([\w.]+)/[\w.$]+""").find(focusedActivity())
+      ?: throw IOException("Не удалось проверить открытый экран через ADB. Проверьте соединение с телевизором.")
+    return component.groupValues[1] == launcherPackage
   }
 
   enum class HomeResult { OPENS, STUBBORN, NO_ACTIVITY }
 
-  /** Назначить LTvLauncher главным экраном и проверить кнопкой «Домой» */
+  private fun launcherComponent(): String? = adb.shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -p $launcherPackage")
+    .lines().map { it.trim() }.lastOrNull { it.substringBefore('/') == launcherPackage && Regex("""[\w.]+/[\w.$]+""").matches(it) }
+
+  /** Назначить выбранный лаунчер главным экраном и проверить кнопкой «Домой» */
   fun makeLauncherHome(): HomeResult {
-    val component = adb.shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -p $LAUNCHER_PACKAGE")
-      .lines().map { it.trim() }.lastOrNull { Regex("^[\\w.]+/[\\w.$]+$").matches(it) }
+    val component = launcherComponent()
     if (component == null) {
-      out.fail("Не нашёл экран лаунчера — откройте LTvLauncher на телевизоре один раз и попробуйте снова.")
+      out.fail("Не нашёл экран лаунчера — откройте $launcherName на телевизоре один раз и попробуйте снова.")
       return HomeResult.NO_ACTIVITY
     }
     val r = adb.shell("cmd package set-home-activity $component")
     if (!r.contains("Success")) out.warn("set-home-activity: $r")
     if (homeOpensLauncher()) {
-      out.ok("Кнопка «Домой» открывает LTvLauncher.")
+      out.ok("Кнопка «Домой» открывает $launcherName.")
       return HomeResult.OPENS
     }
     out.warn("Прошивка всё равно открывает штатный главный экран (так делает Google TV и часть Яндекс ТВ).")
-    out.hint("Мягкий способ: на ТВ откройте Настройки → Специальные возможности → «Home Button Fix» (LTvLauncher) и включите. Затем нажмите «Домой» на пульте.")
+    out.hint(launcherHomeHint)
     return HomeResult.STUBBORN
   }
 
   fun stockLaunchers(): List<PackageEntry> = planner.stockLaunchers(info)
 
-  enum class HardResult { UNKNOWN_STOCK, WIFI_OWNER, DONE, REVERTED }
+  enum class HardResult { UNKNOWN_STOCK, NO_ACTIVITY, WIFI_OWNER, DONE, REVERTED, RESTORE_PENDING }
 
   /**
    * Жёсткий способ — отключить штатный лаунчер вместе с парными пакетами.
@@ -500,22 +520,45 @@ class TvSession(
       out.warn("Не удаляйте и не отключайте его сами или через ИИ-ассистента: телевизор может перестать загружаться дальше логотипа.")
       return HardResult.UNKNOWN_STOCK
     }
+    if (launcherComponent() == null) {
+      out.fail("Не удалось подтвердить через ADB, что $launcherName доступен как главный экран. Штатный экран оставлен включённым.")
+      return HardResult.NO_ACTIVITY
+    }
     val wifiOwners = adb.shell("dumpsys wifi | grep -o 'cname=[^ ]*'")
+    if (ADB_OFFLINE.containsMatchIn(wifiOwners)) throw IOException("Не удалось проверить владельца сети Wi-Fi. Переподключитесь к телевизору.")
     val owners = stock.filter { wifiOwners.contains(it.id) }
     if (owners.isNotEmpty()) {
       out.warn("${owners.joinToString(", ") { it.id }} владеет сохранённой сетью Wi-Fi: после отключения ТВ потеряет Wi-Fi.")
       out.hint("Настройки → Сеть → «Забыть сеть», подключитесь к ней заново и попробуйте ещё раз.")
       return HardResult.WIFI_OWNER
     }
-    disable(stock)
-    refresh()
-    if (homeOpensLauncher()) {
-      out.ok("Готово: «Домой» открывает LTvLauncher.")
+    val opens = try {
+      val result = disable(stock)
+      result.failed.isEmpty() && result.notApplied.isEmpty() && homeOpensLauncher()
+    } catch (e: IOException) {
+      out.warn("Ошибка ADB при смене главного экрана: ${e.message}")
+      false
+    }
+    if (opens) {
+      refresh()
+      out.ok("Готово: «Домой» открывает $launcherName.")
       return HardResult.DONE
     }
-    out.fail("Не помогло. Возвращаю штатный лаунчер.")
-    for (e in stock) adb.shell("pm enable ${e.id}")
+    out.warn("Смена главного экрана не подтвердилась. Включаю штатные пакеты.")
+    val enabled = try {
+      for (e in stock) adb.shell("pm enable ${e.id}")
+      TvInfo.parsePackages(adb.shell("pm list packages -e"))
+    } catch (e: IOException) {
+      out.fail("Восстановление не подтверждено. Переподключитесь и выберите «Вернуть как было».")
+      throw e
+    }
+    val unconfirmed = stock.filter { it.id !in enabled }
+    if (unconfirmed.isNotEmpty()) {
+      out.fail("Не подтверждено включение: ${unconfirmed.joinToString { it.id }}. Переподключитесь и выберите «Вернуть как было».")
+      return HardResult.RESTORE_PENDING
+    }
     refresh()
+    out.ok("Штатные пакеты снова включены.")
     return HardResult.REVERTED
   }
 
@@ -523,6 +566,7 @@ class TvSession(
     fun happCode(input: String): String? =
       input.replace(" ", "").replace("-", "").takeIf { it.matches(Regex("[A-Za-z0-9]{5}")) }
 
+    private val ADB_OFFLINE = Regex("device offline|device unauthorized|no devices/emulators found", RegexOption.IGNORE_CASE)
     private val DISABLED = Regex("disabled-user|new state: disabled", RegexOption.IGNORE_CASE)
     private val PROTECTED = Regex("protected package", RegexOption.IGNORE_CASE)
     private val ILLEGAL = Regex("command is illegal", RegexOption.IGNORE_CASE)
@@ -543,7 +587,9 @@ class TvSession(
     /** Пакеты SmartTube: новые (после смены ключа в конце 2025) и старые */
     val SMARTTUBE_PACKAGES = listOf("org.smarttube.stable", "org.smarttube.beta", "app.smarttube.fdroid", "com.teamsmart.videomanager.tv", "com.liskovsoft.smarttubetv.beta")
     const val HAPP_PACKAGE = "su.happ.proxyutility"
-    const val LAUNCHER_PACKAGE = "com.leanbitlab.ltvL"
+    const val LAUNCHER_PACKAGE = "com.gathin.tvhome"
+    const val LEGACY_LAUNCHER_PACKAGE = "com.leanbitlab.ltvL"
+    private val KNOWN_LAUNCHERS = setOf(LAUNCHER_PACKAGE, LEGACY_LAUNCHER_PACKAGE)
     const val ADGUARD_DNS = "dns.adguard-dns.com"
 
     /** Настройка Android по умолчанию — её ставим, если не знаем, что было до ЧистогоТВ */

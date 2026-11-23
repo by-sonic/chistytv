@@ -101,7 +101,7 @@ fun HomeScreen(vm: MainViewModel) {
         ) { vm.go(Screen.YouTube) }
         ActionTile(
           Icons.Rounded.Dashboard, Accent.Home, "Новый главный экран",
-          "LTvLauncher — без рекламных рядов и рекомендаций",
+          session?.launcherName ?: "Главный экран без рекламных рядов",
           badge = if (session?.launcherInstalled == true) "установлен" else null, badgeColor = C.Ok,
         ) { vm.go(Screen.Launcher) }
         ActionTile(Icons.Rounded.Shield, Accent.Dns, "Блокировка рекламы через DNS", "AdGuard DNS режет рекламу и трекеры в приложениях") { vm.openDns() }

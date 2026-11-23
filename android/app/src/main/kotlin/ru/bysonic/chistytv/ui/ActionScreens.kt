@@ -261,15 +261,15 @@ fun LauncherScreen(vm: MainViewModel) {
   ActionScaffold("Новый главный экран", vm, bottom = {
     when {
       home == TvSession.HomeResult.OPENS || vm.hardResult == TvSession.HardResult.DONE -> GradientButton("Готово", { vm.back() }, Modifier.fillMaxWidth(), Icons.Rounded.CheckCircle)
-      home == TvSession.HomeResult.STUBBORN -> GhostButton("Включил «Home Button Fix» — проверить", { vm.checkHomeAgain() }, Modifier.fillMaxWidth(), enabled = !vm.busy)
+      home == TvSession.HomeResult.STUBBORN -> GhostButton("Проверить кнопку «Домой»", { vm.checkHomeAgain() }, Modifier.fillMaxWidth(), enabled = !vm.busy)
       else -> GradientButton(if (s.launcherInstalled) "Сделать главным экраном" else "Установить и сделать главным", { vm.makeHome() }, Modifier.fillMaxWidth(), Icons.Rounded.Dashboard, enabled = !vm.busy, loading = vm.busy)
     }
   }) {
-    Header(Icons.Rounded.Dashboard, Accent.Home, "Чистый главный экран", "LTvLauncher — открытый лаунчер (GPL-3.0) без рекламных рядов и рекомендаций. Штатный главный экран не удаляется и не отключается, пока вы сами не попросите.")
+    Header(Icons.Rounded.Dashboard, Accent.Home, "Чистый главный экран", "${s.launcherName} — главный экран без рекламных рядов и рекомендаций. Штатный главный экран не удаляется и не отключается, пока вы сами не попросите.")
     LogPanel(vm.log, vm.busy)
     if (home == TvSession.HomeResult.STUBBORN && vm.hardResult == null) {
       Spacer(Modifier.height(14.dp))
-      Hint("Мягкий способ: на ТВ откройте Настройки → Специальные возможности → «Home Button Fix» (LTvLauncher) и включите. Затем нажмите «Домой» на пульте.", Icons.Rounded.Dashboard, C.Sky)
+      Hint(s.launcherHomeHint, Icons.Rounded.Dashboard, C.Sky)
       val stock = vm.stockLaunchers
       if (stock.isNotEmpty()) {
         Spacer(Modifier.height(14.dp))
@@ -280,7 +280,7 @@ fun LauncherScreen(vm: MainViewModel) {
             Text("Жёсткий способ", style = MaterialTheme.typography.titleMedium, color = C.Text)
           }
           Spacer(Modifier.height(8.dp))
-          Text("Отключить штатный лаунчер. Обратимо через «Вернуть как было». Если «Домой» всё равно не откроет LTvLauncher, верну штатный сам.", style = MaterialTheme.typography.bodyMedium, color = C.TextDim)
+          Text("Отключить штатный лаунчер. Обратимо через «Вернуть как было». Если «Домой» всё равно не откроет ${s.launcherName}, верну штатный сам.", style = MaterialTheme.typography.bodyMedium, color = C.TextDim)
           Spacer(Modifier.height(8.dp))
           stock.forEach { Text("•  ${it.title} (${it.id})", style = MaterialTheme.typography.bodySmall, color = C.TextDim) }
           Spacer(Modifier.height(12.dp))

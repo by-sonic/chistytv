@@ -1,6 +1,7 @@
 node_modules/
 *.log
 *.apk
+!/data/CleanYourTV-Launcher-3.6.apk
 .claude/
 HABR.md
 cover-habr.png

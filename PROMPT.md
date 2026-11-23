@@ -85,8 +85,7 @@ YouTube без тормозов
 Главный экран (по желанию)
 - Прежде чем что-то ставить, проверь, что ТВ принимает сторонние APK, и какие приложения отвечают на
   HOME: `cmd package query-activities -a android.intent.action.MAIN -c android.intent.category.HOME`.
-- Если хочу чистый главный экран без рекламных рядов — предложи собрать лаунчер из `launcher/`
-  репозитория CleanYourTV или поставить готовый бесплатный лаунчер, установи его, сделай главным
+- Если хочу чистый главный экран без рекламных рядов — на телевизоре с Android 8 или новее используй встроенный `data/CleanYourTV-Launcher-3.6.apk` (пакет `com.gathin.tvhome`), на более старой версии — LTvLauncher. Установи выбранный лаунчер, сделай главным
   (`cmd package set-home-activity`) и проверь через `dumpsys activity activities | grep mFocusedApp`,
   что кнопка «Домой» правда открывает его. Только после этого и моего подтверждения отключай штатный
   лаунчер. На Google TV перед отключением `com.google.android.tungsten.setupwraith` проверь

@@ -210,7 +210,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
           val c = TvConnection(k, deviceName)
           if (!c.connect(host, port, tls)) throw IOException("телевизор не ответил")
           Log.i(TAG, "подключено, читаю сведения")
-          val s = TvSession(c, db, File(ctx.filesDir, "tv"), ApkCache(File(ctx.cacheDir, "apk"), net), net)
+          val apks = ApkCache(File(ctx.cacheDir, "apk"), net, openAsset = { ctx.assets.open(it) })
+          val s = TvSession(c, db, File(ctx.filesDir, "tv"), apks, net)
           Result.success(c to s)
         } catch (e: Throwable) {
           Log.w(TAG, "подключение не удалось", e)
@@ -446,7 +447,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
   fun checkHomeAgain() = op(clearLog = false) {
     if (homeOpensLauncher()) {
-      out.ok("Готово: «Домой» открывает LTvLauncher.")
+      out.ok("Готово: «Домой» открывает $launcherName.")
       homeResult = TvSession.HomeResult.OPENS
     } else {
       out.warn("Пока открывается штатный главный экран.")

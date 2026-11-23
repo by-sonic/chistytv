@@ -6,6 +6,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.security.MessageDigest
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -106,7 +108,28 @@ object ApkSources {
 }
 
 /** Скачанные APK храним: без связи с GitHub возьмём сохранённый, как скрипт */
-class ApkCache(private val dir: File, private val net: Net, private val pins: Map<String, String> = ApkSignature.PINS) {
+class ApkCache(
+  private val dir: File,
+  private val net: Net,
+  private val pins: Map<String, String> = ApkSignature.PINS,
+  private val openAsset: (String) -> InputStream = { throw IOException("Нет встроенного файла $it") },
+) {
+  fun installBundledLauncher(install: (File) -> Boolean): Boolean {
+    val bytes = openAsset("CleanYourTV-Launcher-3.6.apk").use { it.readBytes() }
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    if (digest != "2711f35b112a9f645c97e5a857f2c5e366c775a43354f1b8667d2aa2ad186318") {
+      throw IOException("Нарушена целостность встроенного CleanYourTV Launcher. Переустановите ЧистыйТВ.")
+    }
+    dir.mkdirs()
+    val apk = File.createTempFile("cleanyourtv-", ".apk", dir)
+    return try {
+      apk.writeBytes(bytes)
+      install(apk)
+    } finally {
+      apk.delete()
+    }
+  }
+
   /** Подпись проверяем у любого файла, скачанного и сохранённого: перед установкой, каждый раз */
   fun get(key: String, out: Output, resolve: () -> ApkSource): File {
     val file = fetch(key, out, resolve)

@@ -48,6 +48,7 @@ class DbTest {
     val script = File(repo, "src/main.ps1").readText()
     assertTrue(script.contains("\$Script:HappPackage = '${TvSession.HAPP_PACKAGE}'"))
     assertTrue(script.contains("\$Script:LauncherPackage = '${TvSession.LAUNCHER_PACKAGE}'"))
+    assertTrue(script.contains("'${TvSession.LEGACY_LAUNCHER_PACKAGE}'"))
     assertTrue(script.contains(TvSession.ADGUARD_DNS))
     for (p in TvSession.SMARTTUBE_PACKAGES) assertTrue(p, script.contains("'$p'"))
   }

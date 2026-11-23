@@ -98,11 +98,11 @@ Check 'второй откат добил остаток' ((@((State $tv).disabl
 
 # 2г. Лаунчер удалён мимо ЧистогоТВ: журнала нет, а вернуть надо
 Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chistytv.txt' | Remove-Item -Force
-$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.cvte.tv.launcher.saturn.skin')) @{ removed = @('com.cvte.tv.launcher.highend') }
-Set-State $tv 'disabled' @('com.cvte.tv.launcher.saturn.skin')
+$tv = New-Tv ($installed + @('com.gathin.tvhome', 'com.cvte.tv.launcher.saturn.skin')) @{ removed = @('com.cvte.tv.launcher.highend') }
+Set-State $tv 'disabled' @('com.cvte.tv.launcher.saturn.skin', 'com.gathin.tvhome')
 $out = Run @('-Action', 'restore', '-Yes')
 $s = State $tv
-Check 'удалённый и отключённый вручную лаунчер вернулся' ((@($s.installed) -contains 'com.cvte.tv.launcher.highend') -and (@($s.disabled).Count -eq 0) -and ($out -match 'убранный не через ЧистыйТВ')) $out
+Check 'удалённый и отключённый вручную лаунчер вернулся' ((@($s.installed) -contains 'com.cvte.tv.launcher.highend') -and (@($s.disabled) -join ',' -eq 'com.gathin.tvhome') -and ($out -match 'убранный не через ЧистыйТВ')) $out
 
 # Grundig #23: «launcher» в имени есть и у вручную отключённого пакета рекламных рядов.
 $adRows = 'com.mediatek.android.leanbacklauncher.partnercustomizer'
@@ -190,25 +190,38 @@ Check '«Выключить» вернул свой частный DNS' ($s.dns_
 $tv = New-Tv ($installed + @('com.leanbitlab.ltvL')) @{ home_works = $true }
 $out = Run @('-Action', 'launcher', '-Yes')
 $s = State $tv
-Check 'лаунчер назначен главным' ($s.home -eq 'com.leanbitlab.ltvL/com.leanbitlab.ltvL.MainActivity' -and $out -match 'открывает LTvLauncher') $out
+Check 'Android 11: встроенный APK установлен рядом с LTvLauncher и назначен главным' ($s.home -eq 'com.gathin.tvhome/com.gathin.tvhome.MainActivity' -and $out -match 'открывает CleanYourTV Launcher' -and $s.pushed_file -eq 'CleanYourTV-Launcher-3.6.apk' -and $s.installed -contains 'com.leanbitlab.ltvL') $out
 
 # 8. Главный экран: прошивка упрямится — без согласия штатный лаунчер не трогаем
-$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.test.launcher')) @{ home_works = $false }
+$tv = New-Tv ($installed + @('com.gathin.tvhome', 'com.test.launcher')) @{ home_works = $false }
 $out = Run @('-Action', 'launcher', '-Yes')
 $s = State $tv
-Check 'предложен мягкий способ, штатный лаунчер цел' (($out -match 'Home Button Fix') -and (@($s.disabled).Count -eq 0)) $out
+Check 'предложен мягкий способ, штатный лаунчер цел' (($out -match 'Главный экран по умолчанию') -and (@($s.disabled).Count -eq 0)) $out
 
 # 9. Жёсткий режим: парный пакет владеет Wi-Fi — отменяем всё, ничего не отключаем
-$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.test.stock', 'com.test.wraith')) @{ wifi_owner = 'cname=com.test.wraith' }
+$tv = New-Tv ($installed + @('com.gathin.tvhome', 'com.test.stock', 'com.test.wraith')) @{ wifi_owner = 'cname=com.test.wraith' }
 $out = RunWithInput "n`ny`n" @('-Action', 'launcher')
 $s = State $tv
 Check 'Wi-Fi владелец — отмена без отключений' (($out -match 'потеряет Wi-Fi') -and (@($s.disabled).Count -eq 0)) $out
 
 # 10. Жёсткий режим: лаунчер отключается вместе с парным пакетом
-$tv = New-Tv ($installed + @('com.leanbitlab.ltvL', 'com.test.stock', 'com.test.wraith'))
+$tv = New-Tv ($installed + @('com.gathin.tvhome', 'com.test.stock', 'com.test.wraith'))
 $out = RunWithInput "n`ny`n" @('-Action', 'launcher')
 $s = State $tv
 Check 'лаунчер и парный пакет отключены вместе' ((@($s.disabled) -contains 'com.test.stock') -and (@($s.disabled) -contains 'com.test.wraith') -and ($out -match 'Готово')) $out
+
+# На Android 7 остаётся прежний совместимый лаунчер.
+$tv = New-Tv ($installed + @('com.leanbitlab.ltvL')) @{ home_works = $true }
+$s = State $tv
+$s.props.'ro.build.version.sdk' = '25'
+$s | ConvertTo-Json -Depth 5 | Set-Content $tv -Encoding UTF8
+$out = Run @('-Action', 'launcher', '-Yes')
+Check 'Android 7: сохранён LTvLauncher, встроенный APK не отправлялся' ((State $tv).home -eq 'com.leanbitlab.ltvL/com.leanbitlab.ltvL.MainActivity' -and -not (State $tv).pushed_file -and $out -match 'открывает LTvLauncher') $out
+
+$tv = New-Tv ($installed + @('com.gathin.tvhome', 'com.test.stock', 'com.test.wraith')) @{ disconnect_on = 'pm disable-user --user 0 com.test.stock' }
+$out = RunWithInput "n`ny`n" @('-Action', 'launcher')
+$commands = Get-Content "$tv.log" -Raw -Encoding UTF8
+Check 'разрыв ADB во время замены: остановка без второго отключения и ложного вывода о прошивке' ($out -match 'Связь с телевизором потеряна' -and $out -notmatch 'Прошивка не даёт отключать пакеты' -and $commands -notmatch 'disable-user --user 0 com.test.wraith') $out
 
 # 11. ТВ ждёт подтверждения отладки — это не ошибка, ждём и подключаемся
 $tv = New-Tv $installed @{ auth_pending = $true }
@@ -243,9 +256,9 @@ $out = RunInstall
 Check 'обычная установка не трогает кэш' ((-not (State $tv).trimmed) -and $out -match 'SmartTube установлен' -and $out -notmatch 'Кэш') $out
 
 # 12б2. Отчёт о телевизоре: модель и незнакомые пакеты есть, личного нет
-$tv = New-Tv ($installed + @('com.cvte.unknown.service', 'com.leanbitlab.ltvL', 'com.secret.bank')) @{
-  third_party = @('com.secret.bank', 'com.leanbitlab.ltvL')
-  home_apps   = @('com.cvte.tv.launcher.highend/.Main', 'com.leanbitlab.ltvL/.MainActivity', 'com.secret.bank/.Home')
+$tv = New-Tv ($installed + @('com.cvte.unknown.service', 'com.leanbitlab.ltvL', 'com.gathin.tvhome', 'com.secret.bank')) @{
+  third_party = @('com.secret.bank', 'com.leanbitlab.ltvL', 'com.gathin.tvhome')
+  home_apps   = @('com.cvte.tv.launcher.highend/.Main', 'com.leanbitlab.ltvL/.MainActivity', 'com.gathin.tvhome/.MainActivity', 'com.secret.bank/.Home')
 }
 $s = State $tv
 $s.props | Add-Member -Force 'ro.serialno' 'SERIAL-12345'
@@ -256,7 +269,7 @@ $rep = Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'report-*.md' | So
 $text = if ($rep) { [IO.File]::ReadAllText($rep.FullName, [Text.Encoding]::UTF8) } else { '' }
 Check 'отчёт: модель, сборка, незнакомый пакет' (($text -match 'MiTV-TEST') -and ($text -match 'm7332_eu') -and ($text -match 'com\.cvte\.unknown\.service') -and ($text -match 'скрипт ')) $out
 Check 'отчёт: без серийника и сторонних приложений' (($text -notmatch 'SERIAL-12345') -and ($text -notmatch 'com\.secret\.bank') -and ($out -notmatch 'com\.secret\.bank')) $text
-Check 'отчёт: лаунчер ЧистогоТВ виден, чужой нет' ($text -match 'com\.leanbitlab\.ltvL/\.MainActivity') $text
+Check 'отчёт: лаунчер ЧистогоТВ виден, чужой нет' ($text -match 'com\.leanbitlab\.ltvL/\.MainActivity' -and $text -match 'com\.gathin\.tvhome/\.MainActivity') $text
 $main = Join-Path $root 'src\main.ps1'
 $ast2 = [System.Management.Automation.Language.Parser]::ParseFile($main, [ref]$null, [ref]$null)
 foreach ($n in 'Protect-ReportLine', 'Get-ReportUrl') {
@@ -312,6 +325,32 @@ Check 'отчёт: обычный короткий текст сохраняет
       Check "Happ Web Import: неверный код $entered" ((-not $success) -and $requests.Count -eq 0)
     }
   }
+}
+
+# Комплектный APK: загрузчик без локального файла использует версию релиза и проверяет каждый файл.
+& {
+  $fn = $ast2.Find({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $args[0].Name -eq 'Get-BundledLauncherApk' }, $false)
+  . ([scriptblock]::Create($fn.Extent.Text))
+  function Say {}
+  function Fail {}
+  $WorkDir = Join-Path $tmp 'bundled-launcher'
+  $original = Join-Path $root 'data\CleanYourTV-Launcher-3.6.apk'
+  $LauncherApkPath = $null
+  $requests = New-Object 'System.Collections.Generic.List[string]'
+  function Invoke-WebRequest([switch]$UseBasicParsing, $Uri, $OutFile) {
+    $requests.Add($Uri)
+    if ($deny) { throw 'offline' }
+    Copy-Item -LiteralPath $original -Destination $OutFile
+  }
+  $deny = $false
+  $file = Get-BundledLauncherApk
+  Check 'веб-запуск: получен проверенный APK из тега релиза' ($requests.Count -eq 1 -and $requests[0] -eq 'https://raw.githubusercontent.com/by-sonic/chistytv/android-v1.0.10/data/CleanYourTV-Launcher-3.6.apk' -and (Test-Path $file))
+  $deny = $true
+  Check 'без интернета повторно используется проверенный APK' ((Get-BundledLauncherApk) -eq $file -and $requests.Count -eq 1)
+  [IO.File]::WriteAllText($file, 'bad apk')
+  Check 'повреждённый кэш не выдаётся при отказе сети' (-not (Get-BundledLauncherApk))
+  $LauncherApkPath = $file
+  Check 'подменённый локальный APK не выдаётся' (-not (Get-BundledLauncherApk))
 }
 
 # 12в. Подпись издателя: читаем сертификат из блока подписи APK

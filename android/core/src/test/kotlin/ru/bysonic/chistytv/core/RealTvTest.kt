@@ -36,7 +36,8 @@ class RealTvTest {
 
   private fun session(): TvSession {
     val net = HttpNet()
-    return TvSession(DadbAdb(connection), db, workDir, ApkCache(File(workDir, "apk"), net), net, Output { lines += it; println("  ${it.tone} ${it.text}") })
+    val apks = ApkCache(File(workDir, "apk"), net, openAsset = { File(repo, "data/$it").inputStream() })
+    return TvSession(DadbAdb(connection), db, workDir, apks, net, Output { lines += it; println("  ${it.tone} ${it.text}") })
   }
 
   @Test
@@ -117,9 +118,9 @@ class RealTvTest {
   }
 
   @Test
-  fun `LTvLauncher с GitHub ставится и становится главным экраном`() {
+  fun `подходящий лаунчер ставится и назначается главным экраном`() {
     val s = session()
-    if (!s.launcherInstalled && ApkSources.abi(s.info) == "x86") {
+    if (!s.usesBundledLauncher && !s.launcherInstalled && ApkSources.abi(s.info) == "x86") {
       // У LTvLauncher нет x86-сборки: на x86-телевизоре честно объясняем, а не падаем молча
       assertTrue(!s.installLauncher())
       assertTrue(text, text.contains("нет сборки под процессор"))
