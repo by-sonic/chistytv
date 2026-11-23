@@ -1,5 +1,7 @@
 from hashlib import sha256
 import os
+import sys
+import pexpect
 from pathlib import Path
 import shutil
 import subprocess
@@ -30,7 +32,16 @@ if home_after_key(ROOT):
     print("Soft integrated PS path activated the launcher. Exercising manual return to original HOME.")
 else:
     print("Soft integrated PS path respected the original HOME. Testing explicit hard-mode consent using the same production action.")
-    out = run("launcher", yes=False, answers="n\ny\n")
+    child = pexpect.spawn(base[0], base[1:] + ["-Action", "launcher"], env=env, encoding="utf-8", timeout=110)
+    child.logfile = sys.stdout
+    child.expect_exact("Проверить кнопку «Домой» ещё раз?")
+    child.sendline("n")
+    child.expect_exact("Отключить штатный лаунчер?")
+    child.sendline("y")
+    child.expect(pexpect.EOF)
+    out = child.before
+    child.close()
+    assert child.exitstatus == 0, (child.exitstatus, out)
     assert home_after_key(ROOT), out
     assert "package:" + stock.split("/")[0] in shell("pm list packages -d").splitlines()
     restore = run("restore", yes=True)
