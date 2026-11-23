@@ -77,7 +77,8 @@ def main():
     print(adb("tcpip", "15555"), flush=True)
     adb("wait-for-device")
     assert shell("getprop service.adb.tcp.port") == "15555"
-    print("Listening:", shell("ss -ltn | grep 15555"), flush=True)
+    time.sleep(2)
+    print("Listener diagnostic:", shell("ss -ltn 2>/dev/null || netstat -ln 2>/dev/null || true")[:300], flush=True)
     # Avoid leaving the onboarding screen off the bottom during manual IP entry.
     assert "Status: ok" in shell(f"am start -W -n {APP}/.MainActivity")
     action("Найти телевизор", swipe=True)
