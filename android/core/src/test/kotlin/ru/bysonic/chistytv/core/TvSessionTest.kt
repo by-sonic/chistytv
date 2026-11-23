@@ -233,18 +233,18 @@ class TvSessionTest {
 
   @Test
   fun `4 подписка уходит в Happ через happ add`() {
-    val tv = FakeTv(installed + listOf("com.happproxy", "org.smarttube.stable"))
+    val tv = FakeTv(installed + listOf("su.happ.proxyutility", "org.smarttube.stable"))
     val r = run(tv)
     assertTrue(r.session.happInstalled && r.session.smartTubeCurrent)
     assertEquals(TvSession.HappResult.Sent, r.session.sendHappSubscription("https://example.com/sub/abc123"))
     assertEquals(1, tv.started.count { it.contains("happ://add/https://example.com/sub/abc123") })
     r.session.sendHappSubscription("https://example.com/sub?id=1&lang=ru")
-    assertEquals("ссылка с & в параметрах проходит", 1, tv.started.count { it.contains("-p com.happproxy -d 'happ://add/https://example.com/sub?id=1&lang=ru'") })
+    assertEquals("ссылка с & в параметрах проходит", 1, tv.started.count { it.contains("-p su.happ.proxyutility -d 'happ://add/https://example.com/sub?id=1&lang=ru'") })
   }
 
   @Test
   fun `5 подозрительная ссылка отвергается`() {
-    val tv = FakeTv(installed + "com.happproxy")
+    val tv = FakeTv(installed + "su.happ.proxyutility")
     val r = run(tv)
     assertEquals(TvSession.HappResult.BadUrl, r.session.sendHappSubscription("https://x.com/'; reboot"))
     assertTrue(r.text.contains("не похоже на ссылку"))

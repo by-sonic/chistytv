@@ -140,14 +140,14 @@ $text = if ($rep) { [IO.File]::ReadAllText($rep.FullName, [Text.Encoding]::UTF8)
 Check 'отчёт: включившийся снова пакет виден' ($text -match 'Включились снова \(не через ЧистыйТВ\)') $text
 
 # 4. Импорт подписки в Happ (приложения уже стоят, сеть не нужна)
-$tv = New-Tv ($installed + @('com.happproxy', 'org.smarttube.stable'))
+$tv = New-Tv ($installed + @('su.happ.proxyutility', 'org.smarttube.stable'))
 $out = Run @('-Action', 'youtube', '-Yes', '-Subscription', 'https://example.com/sub/abc123')
 $s = State $tv
 Check 'подписка отправлена через happ://add/' (@($s.started | Where-Object { $_ -match "happ://add/https://example\.com/sub/abc123" }).Count -eq 1) $out
 
 $out = Run @('-Action', 'youtube', '-Yes', '-Subscription', 'https://example.com/sub?id=1&lang=ru')
 $s = State $tv
-Check 'ссылка с & в параметрах проходит' (@($s.started | Where-Object { $_ -match "-p com\.happproxy -d 'happ://add/https://example\.com/sub\?id=1&lang=ru'" }).Count -eq 1) $out
+Check 'ссылка с & в параметрах проходит' (@($s.started | Where-Object { $_ -match "-p su\.happ\.proxyutility -d 'happ://add/https://example\.com/sub\?id=1&lang=ru'" }).Count -eq 1) $out
 
 # 5. Подозрительная «ссылка» отвергается
 $out = Run @('-Action', 'youtube', '-Yes', '-Subscription', "https://x.com/'; reboot")

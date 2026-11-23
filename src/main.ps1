@@ -696,7 +696,7 @@ function Install-Apk([string]$File, [string]$Label) {
 # Пакеты SmartTube: новые (после смены ключа в конце 2025) и старые.
 $Script:SmartTubePackages = @('org.smarttube.stable', 'org.smarttube.beta', 'app.smarttube.fdroid',
   'com.teamsmart.videomanager.tv', 'com.liskovsoft.smarttubetv.beta')
-$Script:HappPackage = 'com.happproxy'
+$Script:HappPackage = 'su.happ.proxyutility'
 $Script:LauncherPackage = 'com.leanbitlab.ltvL'
 
 function Get-Abi {

@@ -542,7 +542,7 @@ class TvSession(
 
     /** Пакеты SmartTube: новые (после смены ключа в конце 2025) и старые */
     val SMARTTUBE_PACKAGES = listOf("org.smarttube.stable", "org.smarttube.beta", "app.smarttube.fdroid", "com.teamsmart.videomanager.tv", "com.liskovsoft.smarttubetv.beta")
-    const val HAPP_PACKAGE = "com.happproxy"
+    const val HAPP_PACKAGE = "su.happ.proxyutility"
     const val LAUNCHER_PACKAGE = "com.leanbitlab.ltvL"
     const val ADGUARD_DNS = "dns.adguard-dns.com"
 
