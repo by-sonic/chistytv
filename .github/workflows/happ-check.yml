@@ -1,0 +1,34 @@
+name: Verify Happ TV import with the published APK
+on:
+  push:
+    branches: [qa/happ-package-routing]
+permissions:
+  contents: read
+jobs:
+  happ:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Fetch official signed Happ 4.11.2
+        run: |
+          curl -fsSL --retry 3 https://github.com/Happ-proxy/happ-android/releases/download/4.11.2/Happ.apk -o Happ.apk
+          echo 'c52aa9f972e43b8bb99bc7a5e499e989d858b4b1d8f4870b9e1b30fd5cbfb998  Happ.apk' | sha256sum -c -
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          script: |
+            adb shell getprop ro.product.cpu.abilist
+            adb install Happ.apk
+            adb shell cmd package resolve-activity --brief -a android.intent.action.VIEW -p com.happproxy -d happ://add/https://example.invalid/test | grep -F 'No activity found'
+            adb shell am start -W -a android.intent.action.VIEW -p com.happproxy -d happ://add/https://example.invalid/test 2>&1 | grep -F 'unable to resolve Intent'
+            adb shell cmd package resolve-activity --brief -a android.intent.action.VIEW -p su.happ.proxyutility -d happ://add/https://example.invalid/test | grep -F su.happ.proxyutility/
+            adb shell am start -W -a android.intent.action.VIEW -p su.happ.proxyutility -d happ://add/https://example.invalid/test | tee start.log
+            grep -F 'Status: ok' start.log
+            grep -F 'su.happ.proxyutility/' start.log
