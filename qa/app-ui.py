@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 from hashlib import sha256
 
-from home import ROOT, HOME, EXPECTED, adb, shell, resolve, assert_home
+from home import ROOT, HOME, EXPECTED, adb, shell, resolve, assert_home, home_after_key
 
 APP = "ru.bysonic.chistytv"
 ART = Path("ui-evidence")
