@@ -28,9 +28,9 @@ function New-Tv([string[]]$Installed, [hashtable]$Extra = @{}) {
 
 function State([string]$Path) { Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json }
 
-function Run([string[]]$ScriptArgs) {
+function Run([string[]]$ScriptArgs, [string]$Database = $data) {
   $work = Join-Path $tmp 'work'
-  $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $script -AdbPath $fakeAdb -DataPath $data -WorkDir $work -TvIp 10.0.0.5 @ScriptArgs *>&1 | Out-String
+  $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $script -AdbPath $fakeAdb -DataPath $Database -WorkDir $work -TvIp 10.0.0.5 @ScriptArgs *>&1 | Out-String
   return $out
 }
 
@@ -103,6 +103,18 @@ Set-State $tv 'disabled' @('com.cvte.tv.launcher.saturn.skin')
 $out = Run @('-Action', 'restore', '-Yes')
 $s = State $tv
 Check 'удалённый и отключённый вручную лаунчер вернулся' ((@($s.installed) -contains 'com.cvte.tv.launcher.highend') -and (@($s.disabled).Count -eq 0) -and ($out -match 'убранный не через ЧистыйТВ')) $out
+
+# Grundig #23: «launcher» в имени есть и у вручную отключённого пакета рекламных рядов.
+$adRows = 'com.mediatek.android.leanbacklauncher.partnercustomizer'
+$homePkg = 'com.google.android.tvlauncher'
+$cast = 'com.google.android.apps.mediashell'
+$tv = New-Tv @($adRows, $homePkg, $cast) @{ disabled = @($adRows, $homePkg, $cast); tv_journal = $cast }
+$releaseDb = Join-Path $root 'data\packages.json'
+Run @('-Action', 'restore', '-Yes') $releaseDb | Out-Null
+Check 'Grundig: вернулись главный экран и Cast из журнала, рекламные ряды остались отключены' ((@((State $tv).disabled) -join ',') -eq $adRows)
+Set-State $tv 'tv_journal' $adRows
+Run @('-Action', 'restore', '-Yes') $releaseDb | Out-Null
+Check 'Grundig: рекламные ряды тоже возвращаются, если их отключал ЧистыйТВ' (@((State $tv).disabled).Count -eq 0)
 
 # 3. Прошивка, запрещающая отключение — понятное сообщение
 $tv = New-Tv $installed @{ refuse = $true }

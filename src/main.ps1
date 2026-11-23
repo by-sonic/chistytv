@@ -366,10 +366,12 @@ function Add-RestoreLog([string]$Pkg) {
 # Штатный лаунчер, удалённый или отключённый мимо ЧистогоТВ (вручную, ассистентом): в журнале его нет.
 # Отключённое прошивкой (enabled=2) не трогаем: только то, что отключил человек (enabled=3).
 function Get-RemovedHome {
+  # У рекламных сервисов вроде leanbacklauncher.partnercustomizer тоже бывает launcher в имени.
+  $cleanable = @($Script:Db.packages | Where-Object { $_.action -eq 'disable' } | ForEach-Object { $_.id })
   $list = {
     param([string]$Command)
     @((Sh $Command) -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() } |
-      Where-Object { $_ -cmatch $Script:SafePkg -and $_ -match 'launcher|tvhome|\.home$' -and $_ -notmatch 'updater' })
+      Where-Object { $_ -cmatch $Script:SafePkg -and $_ -match 'launcher|tvhome|\.home$' -and $_ -notmatch 'updater' -and $cleanable -notcontains $_ })
   }
   $now = @(& $list 'pm list packages')
   $removed = @(& $list 'pm list packages -u' | Where-Object { $now -notcontains $_ })

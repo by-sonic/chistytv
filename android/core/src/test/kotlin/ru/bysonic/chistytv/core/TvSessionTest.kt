@@ -24,10 +24,10 @@ class TvSessionTest {
     val text: String get() = lines.joinToString("\n") { it.text }
   }
 
-  private fun run(tv: FakeTv, net: Net = StubNet()): Run {
+  private fun run(tv: FakeTv, net: Net = StubNet(), database: Db = db): Run {
     val lines = mutableListOf<Line>()
     val root = Files.createTempDirectory("chistytv-test").toFile()
-    val s = TvSession(tv, db, root, ApkCache(File(root, "apk"), net, emptyMap()), net, Output { lines += it }, sleep = {})
+    val s = TvSession(tv, database, root, ApkCache(File(root, "apk"), net, emptyMap()), net, Output { lines += it }, sleep = {})
     return Run(s, lines, root)
   }
 
@@ -117,6 +117,21 @@ class TvSessionTest {
     val res = r.session.restore()
     assertTrue(r.text, res.failed.isEmpty() && "com.cvte.tv.launcher.highend" in tv.installed && tv.disabled.isEmpty())
     assertTrue(r.text, r.text.contains("убранный не через ЧистыйТВ"))
+  }
+
+  @Test
+  fun `Grundig - вернуть штатный экран и только записанные в журнал сервисы`() {
+    val adRows = "com.mediatek.android.leanbacklauncher.partnercustomizer"
+    val home = "com.google.android.tvlauncher"
+    val cast = "com.google.android.apps.mediashell"
+    val tv = FakeTv(listOf(adRows, home, cast)).apply { disabled += listOf(adRows, home, cast) }
+    val session = run(tv, database = Db.parse(File(repo, "data/packages.json").readText())).session
+    session.store.record(cast)
+    assertEquals(setOf(home, cast), session.restore().restored.toSet())
+    assertEquals(setOf(adRows), tv.disabled.toSet())
+    session.store.record(adRows)
+    assertEquals(listOf(adRows), session.restore().restored)
+    assertTrue(tv.disabled.isEmpty())
   }
 
   @Test

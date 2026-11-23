@@ -108,6 +108,7 @@ class TvSession(
   fun removedHome(): List<String> {
     fun list(command: String) = TvInfo.parsePackages(adb.shell(command))
       .filter { TvStore.SAFE_PKG.matches(it) && HOME_NAME.containsMatchIn(it) && "updater" !in it }
+      .filterNot { db.entry(it)?.action == "disable" } // У сервисов рекламных рядов тоже бывает launcher в имени.
     val now = list("pm list packages").toSet()
     return list("pm list packages -u").filter { it !in now } +
       list("pm list packages -d").filter { "enabled=3" in adb.shell("dumpsys package $it") }
