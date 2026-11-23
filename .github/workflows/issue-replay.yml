@@ -2,6 +2,12 @@ name: Released package manager command replay
 on:
   push:
     branches: [qa/issue-replay-20261122]
+    paths:
+      - 'qa/replay.py'
+      - 'qa/discovery.ps1'
+      - 'qa/public-reports.json'
+      - 'test/fake-adb.ps1'
+      - 'android/core/src/test/kotlin/ru/bysonic/chistytv/core/ReportReplayTest.kt'
 permissions:
   contents: read
 jobs:
