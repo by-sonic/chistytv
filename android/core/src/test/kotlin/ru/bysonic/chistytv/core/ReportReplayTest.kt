@@ -21,6 +21,7 @@ class ReportReplayTest {
     val off = listOf("ru.sberdevices.smarthome.promo", "ru.sberdevices.videos", "ru.sberdevices.gamepad.service")
     val tv = FakeTv(active + off + owner).apply {
       props["ro.product.manufacturer"] = "SaluteTV"
+      props["ro.product.brand"] = "SaluteTV"
       props["ro.product.model"] = "SaluteTV"
       props["ro.build.version.release"] = "13"
       props["ro.build.version.sdk"] = "33"
@@ -35,9 +36,16 @@ class ReportReplayTest {
     assertFalse(session.report("1.0.8", emptyList()).full.contains("Включились снова"))
     tv.disabled.clear()
     session.refresh()
-    session.clean(session.plan().filter { it.action == "disable" })
+    assertTrue("show the launcher hint after this cleanup",
+      session.clean(session.plan().filter { it.action == "disable" }).homeHint)
     assertFalse(owner in tv.disabled)
     assertFalse(tv.commands.any { it.startsWith("pm disable") && it.endsWith(owner) })
+    tv.disabled.clear()
+    tv.installed += "com.leanbitlab.ltvL"
+    session.refresh()
+    val selected = session.plan().filter { it.action == "disable" }
+    assertTrue("same cleanup with LTvLauncher present", selected.isNotEmpty())
+    assertFalse("hint suppressed when LTvLauncher already installed", session.clean(selected).homeHint)
   }
 
   @Test fun `25 Haier repeated loss report preserves diagnostics without diagnosing the network`() {
