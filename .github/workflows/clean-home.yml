@@ -2,6 +2,7 @@ name: CleanYourTV launcher on Android TV 11
 on:
   push:
     branches: [qa/embedded-clean-home]
+    paths: ['data/CleanYourTV-Launcher-3.6.apk', 'qa/home.py', '.github/workflows/clean-home.yml']
 permissions:
   contents: read
 jobs:
