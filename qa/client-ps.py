@@ -34,9 +34,9 @@ else:
     print("Soft integrated PS path respected the original HOME. Testing explicit hard-mode consent using the same production action.")
     child = pexpect.spawn(base[0], base[1:] + ["-Action", "launcher"], env=env, encoding="utf-8", timeout=110)
     child.logfile = sys.stdout
-    child.expect_exact("Проверить кнопку «Домой» ещё раз?")
+    child.expect_exact("РџСЂРѕРІРµСЂРёС‚СЊ РєРЅРѕРїРєСѓ В«Р”РѕРјРѕР№В» РµС‰С‘ СЂР°Р·?")
     child.sendline("n")
-    child.expect_exact("Отключить штатный лаунчер?")
+    child.expect_exact("РћС‚РєР»СЋС‡РёС‚СЊ С€С‚Р°С‚РЅС‹Р№ Р»Р°СѓРЅС‡РµСЂ?")
     child.sendline("y")
     child.expect(pexpect.EOF)
     out = child.before

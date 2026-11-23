@@ -105,8 +105,8 @@ def main():
         if not home_after_key(ROOT):
             print("Stock HOME retained. Return to the connected ChistyTV client and explicitly confirm its hard mode.", flush=True)
             shell(f"am start -n {APP}/.MainActivity --activity-reorder-to-front")
-            action("Отключить штатный лаунчер", swipe=True)
-            action("Отключить")
+            action("РћС‚РєР»СЋС‡РёС‚СЊ С€С‚Р°С‚РЅС‹Р№ Р»Р°СѓРЅС‡РµСЂ", swipe=True)
+            action("РћС‚РєР»СЋС‡РёС‚СЊ")
             for _ in range(15):
                 if "package:" + initial.split("/")[0] in shell("pm list packages -d").splitlines():
                     break
