@@ -18,6 +18,12 @@ jobs:
         run: |
           curl -fsSL --retry 3 https://github.com/Happ-proxy/happ-android/releases/download/4.11.2/Happ.apk -o Happ.apk
           echo 'c52aa9f972e43b8bb99bc7a5e499e989d858b4b1d8f4870b9e1b30fd5cbfb998  Happ.apk' | sha256sum -c -
+      - name: Verify the published ChistyTV update
+        run: |
+          curl -fsSL --retry 3 https://github.com/by-sonic/chistytv/releases/download/android-v1.0.8/ChistyTV.apk -o previous.apk
+          curl -fsSL --retry 3 https://github.com/by-sonic/chistytv/releases/download/android-v1.0.9/ChistyTV.apk -o update.apk
+          echo 'ad4d9cbcb831ecb608e6cf08ca948bc56ff75518a03604aa0a259c96418cb214  previous.apk' | sha256sum -c -
+          echo 'fd7eebe1d4c45848a2c87da66c686dde717b150066df12c6a08d99443ea1207a  update.apk' | sha256sum -c -
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -25,6 +31,11 @@ jobs:
           target: google_apis
           script: |
             adb shell getprop ro.product.cpu.abilist
+            adb install previous.apk
+            adb install -r update.apk
+            adb shell dumpsys package ru.bysonic.chistytv | grep -F 'versionName=1.0.9'
+            adb shell am start -W -n ru.bysonic.chistytv/.MainActivity | tee chistytv-start.log
+            grep -F 'Status: ok' chistytv-start.log
             adb install Happ.apk
             adb shell cmd package resolve-activity --brief -a android.intent.action.VIEW -p com.happproxy -d happ://add/https://example.invalid/test | grep -F 'No activity found'
             adb shell am start -W -a android.intent.action.VIEW -p com.happproxy -d happ://add/https://example.invalid/test 2>&1 | grep -F 'unable to resolve Intent'
