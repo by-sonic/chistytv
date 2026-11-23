@@ -32,16 +32,18 @@ if home_after_key(ROOT):
     print("Soft integrated PS path activated the launcher. Exercising manual return to original HOME.")
 else:
     print("Soft integrated PS path respected the original HOME. Testing explicit hard-mode consent using the same production action.")
-    child = pexpect.spawn(base[0], base[1:] + ["-Action", "launcher"], env=env, encoding="utf-8", timeout=110)
-    child.logfile = sys.stdout
-    child.expect_exact("Проверить кнопку «Домой» ещё раз?")
-    child.sendline("n")
-    child.expect_exact("Отключить штатный лаунчер?")
-    child.sendline("y")
-    child.expect(pexpect.EOF)
-    out = child.before
-    child.close()
-    assert child.exitstatus == 0, (child.exitstatus, out)
+    prompt_harness = """
+function global:Read-Host([string]$Prompt) {
+    if ($Prompt.Contains('Проверить кнопку «Домой» ещё раз?')) { Write-Host $Prompt 'n'; return 'n' }
+    if ($Prompt.Contains('Отключить штатный лаунчер?')) { Write-Host $Prompt 'y'; return 'y' }
+    throw "Unexpected installer question: $Prompt"
+}
+& ./candidate/chistytv.ps1 -TvIp '127.0.0.1:5555' -AdbPath (Get-Command adb).Source -WorkDir (Join-Path $env:RUNNER_TEMP 'client-work') -Action launcher
+"""
+    out = subprocess.run(["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", prompt_harness],
+                         env=env, check=True, text=True, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, timeout=100).stdout
+    print(out, flush=True)
     assert home_after_key(ROOT), out
     assert "package:" + stock.split("/")[0] in shell("pm list packages -d").splitlines()
     restore = run("restore", yes=True)
