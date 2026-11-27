@@ -346,11 +346,15 @@ fun RestoreScreen(vm: MainViewModel) {
   val r = vm.restoreResult
   ActionScaffold("Вернуть как было", vm, bottom = {
     if (r != null) GradientButton("Готово", { vm.back() }, Modifier.fillMaxWidth(), Icons.Rounded.CheckCircle)
-    else GradientButton("Включить всё обратно", { vm.runRestore() }, Modifier.fillMaxWidth(), Icons.Rounded.Replay, enabled = vm.journal.isNotEmpty() && !vm.busy, loading = vm.busy)
+    else GradientButton("Включить всё обратно", { vm.runRestore() }, Modifier.fillMaxWidth(), Icons.Rounded.Replay, enabled = (vm.journal.isNotEmpty() || vm.ourHome) && !vm.busy, loading = vm.busy)
   }) {
     Header(Icons.Rounded.Replay, Accent.Restore, "Вернуть как было", "Включу всё, что отключал ЧистыйТВ — с этого телефона, с другого или скриптом с компьютера: журнал хранится и на самом телевизоре.")
     if (r == null && !vm.busy) {
-      if (vm.journal.isEmpty()) Hint("ЧистыйТВ на этом телевизоре ещё ничего не отключал.")
+      if (vm.ourHome) {
+        Hint("Кнопка «Домой» открывает главный экран ЧистогоТВ. Верну штатный, а новый останется в списке приложений.")
+        Spacer(Modifier.height(10.dp))
+      }
+      if (vm.journal.isEmpty()) { if (!vm.ourHome) Hint("ЧистыйТВ на этом телевизоре ещё ничего не отключал.") }
       else {
         SectionTitle("Отключено ЧистымТВ (${vm.journal.size})")
         GlassCard(Modifier.fillMaxWidth()) {

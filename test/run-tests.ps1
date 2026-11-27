@@ -116,6 +116,21 @@ Set-State $tv 'tv_journal' $adRows
 Run @('-Action', 'restore', '-Yes') $releaseDb | Out-Null
 Check 'Grundig: рекламные ряды тоже возвращаются, если их отключал ЧистыйТВ' (@((State $tv).disabled).Count -eq 0)
 
+# 2в. Мягкий способ нового главного экрана: журнала нет, а «Домой» возвращается штатному
+Get-ChildItem (Join-Path $tmp 'work') -Recurse -Filter 'disabled-by-chistytv.txt' -ErrorAction SilentlyContinue | Remove-Item -Force
+$tv = New-Tv ($installed + @('com.test.stock', 'com.gathin.tvhome')) @{
+  third_party = @('com.gathin.tvhome'); home = 'com.gathin.tvhome/com.gathin.tvhome.MainActivity'
+  home_apps = @('com.test.stock/.Home', 'com.gathin.tvhome/com.gathin.tvhome.MainActivity', 'com.android.tv.settings/.system.FallbackHome')
+}
+$out = Run @('-Action', 'restore', '-Yes')
+Check 'откат без журнала вернул штатный главный экран' ((State $tv).home -eq 'com.test.stock/.Home' -and $out -match 'снова открывает штатный' -and $out -notmatch 'нет журнала') $out
+
+# 2г. Откат с журналом, когда «Домой» и так штатный: главный экран не трогаем
+$tv = New-Tv $installed @{ home_apps = @('com.test.stock/.Home') }
+Run @('-Action', 'clean', '-Yes') | Out-Null
+$out = Run @('-Action', 'restore', '-Yes')
+Check 'откат не трогает главный экран, если он штатный' (-not (State $tv).home -and $out -notmatch 'штатный главный экран \(') $out
+
 # 3. Прошивка, запрещающая отключение — понятное сообщение
 $tv = New-Tv $installed @{ refuse = $true }
 $out = Run @('-Action', 'clean', '-Yes')

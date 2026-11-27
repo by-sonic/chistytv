@@ -101,7 +101,8 @@ class TvSession(
     return CleanResult(backup, r, hint)
   }
 
-  data class RestoreResult(val restored: List<String>, val failed: List<String>, val hadJournal: Boolean)
+  /** home: null — главный экран менять не пришлось, true — вернули штатный, false — не вышло */
+  data class RestoreResult(val restored: List<String>, val failed: List<String>, val hadJournal: Boolean, val home: Boolean? = null)
 
   /**
    * Штатный лаунчер, удалённый или отключённый мимо ЧистогоТВ (вручную, ассистентом): в журнале его нет.
@@ -122,8 +123,10 @@ class TvSession(
     if (home.isNotEmpty()) out.info("Нашёл штатный главный экран, убранный не через ЧистыйТВ: ${home.joinToString(", ")}")
     val pkgs = (store.recorded() + home).distinct()
     if (pkgs.isEmpty()) {
-      out.warn("Для этого телевизора нет журнала ЧистогоТВ — возвращать нечего.")
-      return RestoreResult(emptyList(), emptyList(), false)
+      // Мягкий способ «Нового главного экрана» ничего не отключает и в журнал не попадает
+      val homeBack = restoreStockHome()
+      if (homeBack == null) out.warn("Для этого телевизора нет журнала ЧистогоТВ — возвращать нечего.")
+      return RestoreResult(emptyList(), emptyList(), false, homeBack)
     }
     val present = TvInfo.parsePackages(adb.shell("pm list packages"))
     val answers = pkgs.associateWith { p ->
@@ -151,7 +154,44 @@ class TvSession(
     } else {
       out.warn("Не включилось: ${bad.joinToString(", ")}. Они остались в журнале — перезагрузите телевизор и нажмите «Вернуть как было» ещё раз.")
     }
-    return RestoreResult(ok, bad, true)
+    // Штатный лаунчер уже включён выше — теперь можно отдать ему кнопку «Домой»
+    return RestoreResult(ok, bad, true, restoreStockHome())
+  }
+
+  private fun homeComponents(command: String): List<String> = adb.shell(command).lines().map { it.trim() }
+    .filter { Regex("^[\\w.]+/[\\w.$]+$").matches(it) }
+
+  /** «Домой» сейчас открывает лаунчер, который поставил ЧистыйТВ (set-home-activity из «Нового главного экрана») */
+  fun ourLauncherIsHome(): Boolean =
+    homeComponents("cmd package resolve-activity $HOME_ARGS").lastOrNull()?.substringBefore('/') in KNOWN_LAUNCHERS
+
+  /**
+   * Вернуть кнопку «Домой» штатному главному экрану. Наш лаунчер не удаляем: его можно открыть из приложений.
+   * null — менять было нечего, true — вернули, false — не получилось.
+   */
+  fun restoreStockHome(): Boolean? {
+    if (!ourLauncherIsHome()) return null
+    val system = TvInfo.parsePackages(adb.shell("pm list packages -s")).toSet()
+    val enabled = TvInfo.parsePackages(adb.shell("pm list packages -e")).toSet()
+    val candidates = homeComponents("cmd package query-activities $HOME_ARGS").distinct().filter {
+      val p = it.substringBefore('/')
+      p in system && p in enabled && p !in KNOWN_LAUNCHERS && !it.contains("FallbackHome")
+    }
+    val known = db.packages.filter { it.launcher }.map { it.id }
+    val stock = candidates.firstOrNull { it.substringBefore('/') in known } ?: candidates.firstOrNull()
+    if (stock == null) {
+      out.warn("Не нашёл штатный главный экран: «Домой» пока открывает лаунчер ЧистогоТВ.")
+      out.hint(STOCK_HOME_HINT)
+      return false
+    }
+    val r = adb.shell("cmd package set-home-activity $stock")
+    if (ourLauncherIsHome()) {
+      out.warn("Не удалось вернуть штатный главный экран: ${shortError(r)}")
+      out.hint(STOCK_HOME_HINT)
+      return false
+    }
+    out.ok("Кнопка «Домой» снова открывает штатный главный экран (${stock.substringBefore('/')}).")
+    return true
   }
 
   // ─── Установка приложений ───────────────────────────────────────────
@@ -590,6 +630,8 @@ class TvSession(
     const val LAUNCHER_PACKAGE = "com.gathin.tvhome"
     const val LEGACY_LAUNCHER_PACKAGE = "com.leanbitlab.ltvL"
     private val KNOWN_LAUNCHERS = setOf(LAUNCHER_PACKAGE, LEGACY_LAUNCHER_PACKAGE)
+    private const val HOME_ARGS = "--brief -a android.intent.action.MAIN -c android.intent.category.HOME"
+    const val STOCK_HOME_HINT = "Вручную: на ТВ Настройки → Приложения → «Главный экран» (или LTvLauncher) → «Удалить». После этого «Домой» снова откроет штатный экран."
     const val ADGUARD_DNS = "dns.adguard-dns.com"
 
     /** Настройка Android по умолчанию — её ставим, если не знаем, что было до ЧистогоТВ */

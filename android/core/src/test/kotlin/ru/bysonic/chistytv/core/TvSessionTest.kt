@@ -594,6 +594,48 @@ class TvSessionTest {
   }
 
   @Test
+  fun `откат без журнала возвращает штатный главный экран после мягкого способа`() {
+    val launcher = TvSession.LAUNCHER_PACKAGE
+    val tv = FakeTv(installed + listOf("com.test.stock", launcher))
+    tv.thirdParty += launcher
+    tv.homeApps += listOf("com.test.stock/.Home", "$launcher/$launcher.MainActivity", "com.android.tv.settings/.system.FallbackHome")
+    tv.home = "$launcher/$launcher.MainActivity"
+    val r = run(tv)
+    val res = r.session.restore()
+    assertEquals(true, res.home)
+    assertEquals("com.test.stock/.Home", tv.home)
+    assertFalse("не пишем, что возвращать нечего", r.text.contains("нет журнала"))
+    assertFalse(r.session.ourLauncherIsHome())
+  }
+
+  @Test
+  fun `откат после жёсткого способа сначала включает штатный лаунчер, потом отдаёт ему «Домой»`() {
+    val launcher = TvSession.LAUNCHER_PACKAGE
+    val tv = FakeTv(installed + listOf("com.test.stock", "com.test.wraith", launcher))
+    tv.thirdParty += launcher
+    tv.homeApps += listOf("com.test.stock/.Home", "$launcher/$launcher.MainActivity")
+    val r = run(tv)
+    r.session.makeLauncherHome()
+    assertEquals(TvSession.HardResult.DONE, r.session.disableStockLauncher())
+    assertTrue("com.test.stock" in tv.disabled)
+    val res = r.session.restore()
+    assertTrue("com.test.stock" !in tv.disabled)
+    assertEquals(true, res.home)
+    assertEquals("com.test.stock/.Home", tv.home)
+  }
+
+  @Test
+  fun `откат не трогает главный экран, если «Домой» и так штатный`() {
+    val tv = FakeTv(installed)
+    tv.homeApps += "com.test.stock/.Home"
+    val r = run(tv)
+    r.session.cleanDefaults()
+    val res = r.session.restore()
+    assertEquals(null, res.home)
+    assertFalse(tv.commands.any { it.startsWith("cmd package set-home-activity") })
+  }
+
+  @Test
   fun `откат без журнала — честно говорим`() {
     val r = run(FakeTv(installed))
     assertFalse(r.session.restore().hadJournal)

@@ -29,7 +29,10 @@ switch ($argv[0]) {
     if ($cmd -eq 'pm list packages') { $state.installed | ForEach-Object { "package:$_" }; return }
     if ($cmd -eq 'pm list packages -s') { @($state.installed) | Where-Object { @($state.third_party) -notcontains $_ } | ForEach-Object { "package:$_" }; return }
     if ($cmd -eq 'pm list packages -3') { @($state.third_party) | Where-Object { $_ } | ForEach-Object { "package:$_" }; return }
-    if ($cmd -match '^cmd package (resolve-activity|query-activities) --brief -a android\.intent\.action\.MAIN -c android\.intent\.category\.HOME$') { 'priority=0 preferredOrder=0'; @($state.home_apps); return }
+    # Как настоящий Android: экран, назначенный set-home-activity, побеждает остальных
+    if ($cmd -match '^cmd package resolve-activity --brief -a android\.intent\.action\.MAIN -c android\.intent\.category\.HOME$') { 'priority=0 preferredOrder=0'; if ($state.home) { $state.home } else { @($state.home_apps) }; return }
+    # Отключённые пакеты в кандидаты не попадают
+    if ($cmd -match '^cmd package query-activities --brief -a android\.intent\.action\.MAIN -c android\.intent\.category\.HOME$') { 'priority=0 preferredOrder=0'; @($state.home_apps) | Where-Object { $_ -and @($state.disabled) -notcontains ($_ -split '/')[0] }; return }
     if ($cmd -eq 'pm list packages -u') { @($state.installed) + @($state.removed) | Where-Object { $_ } | ForEach-Object { "package:$_" }; return }
     if ($cmd -match '^dumpsys package (\S+)$') { if (@($state.disabled) -contains $Matches[1]) { 'User 0: installed=true enabled=3' } else { 'User 0: installed=true enabled=0' }; return }
     if ($cmd -eq 'pm list packages -d') { $state.disabled | ForEach-Object { "package:$_" }; return }

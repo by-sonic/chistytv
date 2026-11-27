@@ -30,7 +30,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Script:Version = '0.2.11'
+$Script:Version = '0.2.12'
 $Script:Repo = 'by-sonic/chistytv'
 $Script:RawBase = "https://raw.githubusercontent.com/$($Script:Repo)/main"
 $Script:Vpn = @{
@@ -490,13 +490,61 @@ function Show-HomeHint {
   Say '  останется без главного экрана. Чтобы убрать и их, выберите «Новый главный экран без рекламных рядов».' 'Yellow'
 }
 
+$Script:HomeArgs = '--brief -a android.intent.action.MAIN -c android.intent.category.HOME'
+
+function Get-HomeComponents([string]$Command) {
+  return @((Sh $Command) -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^[\w.]+/[\w.$]+$' })
+}
+
+# «Домой» открывает лаунчер, который поставил ЧистыйТВ (set-home-activity из «Нового главного экрана»)
+function Test-OurHome {
+  $current = @(Get-HomeComponents "cmd package resolve-activity $($Script:HomeArgs)") | Select-Object -Last 1
+  if (-not $current) { return $false }
+  return (@($Script:LauncherPackage, $Script:LegacyLauncherPackage) -contains ($current -split '/')[0])
+}
+
+# Вернуть «Домой» штатному главному экрану. Наш лаунчер не удаляем: его можно открыть из приложений.
+# $null — менять было нечего, $true — вернули, $false — не получилось.
+function Restore-StockHome {
+  if (-not (Test-OurHome)) { return $null }
+  $hint = 'Вручную: на ТВ Настройки → Приложения → «Главный экран» (или LTvLauncher) → «Удалить». После этого «Домой» снова откроет штатный экран.'
+  $ours = @($Script:LauncherPackage, $Script:LegacyLauncherPackage)
+  $system = @((Sh 'pm list packages -s') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() })
+  $off = @((Sh 'pm list packages -d') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() })
+  $candidates = @(Get-HomeComponents "cmd package query-activities $($Script:HomeArgs)" | Select-Object -Unique | Where-Object {
+      $p = ($_ -split '/')[0]
+      $system -contains $p -and $off -notcontains $p -and $ours -notcontains $p -and $_ -notmatch 'FallbackHome'
+    })
+  $known = @($Script:Db.packages | Where-Object { $_.launcher } | ForEach-Object { $_.id })
+  $stock = $candidates | Where-Object { $known -contains ($_ -split '/')[0] } | Select-Object -First 1
+  if (-not $stock) { $stock = $candidates | Select-Object -First 1 }
+  if (-not $stock) {
+    Warn 'Не нашёл штатный главный экран: «Домой» пока открывает лаунчер ЧистогоТВ.'
+    Say "  $hint" 'White'
+    return $false
+  }
+  $out = Sh "cmd package set-home-activity $stock"
+  if (Test-OurHome) {
+    Warn "Не удалось вернуть штатный главный экран: $(Get-ShortError $out)"
+    Say "  $hint" 'White'
+    return $false
+  }
+  Ok "Кнопка «Домой» снова открывает штатный главный экран ($(($stock -split '/')[0]))."
+  return $true
+}
+
 function Invoke-Restore {
   Title 'Вернуть как было'
   $log = Get-RestoreLog
   $stockHome = @(Get-RemovedHome)
   if ($stockHome.Count) { Say "  Нашёл штатный главный экран, убранный не через ЧистыйТВ: $($stockHome -join ', ')" 'White' }
   $pkgs = @(@(Get-RestorePackages) + $stockHome | Select-Object -Unique)
-  if (-not $pkgs.Count) { Warn "Для этого телевизора нет журнала ЧистогоТВ — ни здесь ($log), ни на самом ТВ."; return }
+  if (-not $pkgs.Count) {
+    # Мягкий способ «Нового главного экрана» ничего не отключает и в журнал не попадает
+    $homeBack = Restore-StockHome
+    if ($null -eq $homeBack) { Warn "Для этого телевизора нет журнала ЧистогоТВ — ни здесь ($log), ни на самом ТВ." }
+    return
+  }
   $present = @((Sh 'pm list packages') -split "`n" | ForEach-Object { ($_ -replace '^package:', '').Trim() })
   $answers = [ordered]@{}
   foreach ($pkg in $pkgs) {
@@ -527,6 +575,8 @@ function Invoke-Restore {
   } else {
     Ok 'Все отключённые ЧистымТВ приложения включены. Перезагрузите телевизор.'
   }
+  # Штатный лаунчер уже включён выше — теперь можно отдать ему кнопку «Домой»
+  Restore-StockHome | Out-Null
 }
 
 function Get-GitHubAsset([string]$Repo, [string[]]$Patterns) {

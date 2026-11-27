@@ -67,10 +67,13 @@ class FakeTv(
     if (c == "pm list packages -d") return disabled.joinToString("\n") { "package:$it" }
     if (c == "pm list packages -s") return (installed - thirdParty).joinToString("\n") { "package:$it" }
     if (c == "pm list packages -3") return thirdParty.joinToString("\n") { "package:$it" }
-    if (c == "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME" ||
-      c == "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME"
-    ) {
-      return "priority=0 preferredOrder=0\n" + homeApps.joinToString("\n")
+    if (c == "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME") {
+      // Как настоящий Android: экран, назначенный set-home-activity, побеждает остальных
+      return "priority=0 preferredOrder=0\n" + (if (home.isNotEmpty()) home else homeApps.joinToString("\n"))
+    }
+    if (c == "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME") {
+      // Отключённые пакеты в кандидаты не попадают
+      return "priority=0 preferredOrder=0\n" + homeApps.filter { it.substringBefore('/') !in disabled }.joinToString("\n")
     }
     if (c == "pm list packages -u") return (installed + removed).joinToString("\n") { "package:$it" }
     Regex("^dumpsys package (\\S+)$").find(c)?.let {

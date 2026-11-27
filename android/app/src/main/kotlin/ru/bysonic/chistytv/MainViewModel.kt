@@ -352,6 +352,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private set
   var journal by mutableStateOf<List<String>>(emptyList())
     private set
+  /** «Домой» открывает лаунчер ЧистогоТВ — откат вернёт штатный, даже если журнал пуст */
+  var ourHome by mutableStateOf(false)
+    private set
 
   private fun resetOperation() {
     log.clear()
@@ -418,10 +421,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
   fun openRestore() {
     go(Screen.Restore)
-    op { journal = store.recorded() + removedHome() }
+    op { journal = store.recorded() + removedHome(); ourHome = ourLauncherIsHome() }
   }
 
-  fun runRestore() = op { restoreResult = restore(); journal = store.recorded() + removedHome() }
+  fun runRestore() = op { restoreResult = restore(); journal = store.recorded() + removedHome(); ourHome = ourLauncherIsHome() }
 
   fun openDns() {
     go(Screen.Dns)
